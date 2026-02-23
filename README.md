@@ -35,19 +35,11 @@
 ### 1. 安装 Skills
 
 ```bash
-# 克隆到 Claude Code skills 目录
+# 克隆到 skills 目录，比如 claude 的 skills 目录：
 git clone https://github.com/Ceeon/videocut-skills.git ~/.claude/skills/videocut
 ```
 
-### 2. 配置 API Key
-
-```bash
-cd ~/.claude/skills/videocut
-cp .env.example .env
-# 编辑 .env，填入火山引擎 API Key
-```
-
-### 3. 安装环境
+### 2. 安装环境
 
 打开 Claude Code，输入：
 
@@ -57,8 +49,7 @@ cp .env.example .env
 
 AI 会自动：
 - 检查 Python、FFmpeg、Node.js
-- 安装 FunASR（口误识别模型，约 2GB）
-- 安装 Whisper large-v3（字幕模型，约 3GB）
+- 安装火山引擎 API Key
 
 ## 使用流程
 
@@ -170,7 +161,7 @@ videocut/
 | Node.js 18+ | 运行脚本 | `brew install node` |
 | FFmpeg | 音视频处理 | `brew install ffmpeg` |
 | Python 3.8+ | 模型运行 | 系统自带 |
-| 火山引擎 API | 语音转录 | [申请 Key](https://console.volcengine.com/) |
+| 火山引擎 API | 语音转录 | [申请 Key](https://console.volcengine.com/speech/new/setting/apikeys) |
 
 ## 常见问题
 
