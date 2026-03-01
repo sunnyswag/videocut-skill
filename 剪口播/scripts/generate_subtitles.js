@@ -96,7 +96,7 @@ for (const word of outputWords) {
         gapStart = gapEnd;
       }
     } else {
-      // <1秒的静音保持原样
+      // <0.5秒的静音保持原样
       wordsWithGaps.push({
         text: '',
         start: Math.round(lastEnd * 100) / 100,
