@@ -306,13 +306,14 @@ const html = `<!DOCTYPE html>
       elements = [];
 
       words.forEach((word, i) => {
+        const isGap = word.opt === 'del';
         const div = document.createElement('div');
-        div.className = word.isGap ? 'gap' : 'word';
+        div.className = isGap ? 'gap' : 'word';
 
         if (selected.has(i)) div.classList.add('selected');
         else if (autoSelected.has(i)) div.classList.add('ai-selected');
 
-        if (word.isGap) {
+        if (isGap) {
           const duration = (word.end - word.start).toFixed(1);
           div.textContent = \`⏸ \${duration}s\`;
         } else {

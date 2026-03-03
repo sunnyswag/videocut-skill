@@ -98,25 +98,25 @@ BASE_DIR=$("$SKILL_DIR/scripts/setup_output.sh" "$VIDEO_PATH" "${WORKSPACE_ROOT:
 cd "$BASE_DIR"
 ```
 
-### 步骤 1-3: 转录
+### 步骤 1: 转录
 
 ```bash
 "$SKILL_DIR/scripts/transcribe.sh" "$VIDEO_PATH" "$BASE_DIR"
 # 输出: 1_转录/audio.mp3, volcengine_result.json
 ```
 
-### 步骤 4: 拆分字幕（静音拆分）
+### 步骤 2: 拆分字幕（静音拆分）
 
 ```bash
 cd "$BASE_DIR/1_转录"
 node "$SKILL_DIR/scripts/generate_subtitles.js" volcengine_result.json
-# 输出: subtitles_words.json
+# 输出: subtitles_words.json（opt: edit/del，长静音按 2s 或更长切分）
 cd "$BASE_DIR"
 ```
 
-### 步骤 5: 分析口误（脚本+AI）
+### 步骤 3: 分析口误（脚本+AI）
 
-#### 5.1 生成易读格式
+#### 3.1 生成易读格式
 
 ```bash
 cd "$BASE_DIR/2_分析"
@@ -124,12 +124,12 @@ node "$SKILL_DIR/scripts/generate_readable.js" ../1_转录/subtitles_words.json
 # 输出: readable.txt
 ```
 
-#### 5.2 读取用户习惯
+#### 3.2 读取用户习惯
 
 先读 `$SKILL_DIR/用户习惯/` 目录下所有规则文件。
 读取 `BASE_DIR` 下用户提供的脚本，理解视频上下文。
 
-#### 5.3 生成句子列表（关键步骤）
+#### 3.3 生成句子列表（关键步骤）
 
 **必须先分句，再分析**。按静音切分成句子列表：
 
@@ -138,14 +138,14 @@ node "$SKILL_DIR/scripts/generate_sentences.js" ../1_转录/subtitles_words.json
 # 输出: sentences.txt
 ```
 
-#### 5.4 脚本自动标记静音（必须先执行）
+#### 3.4 脚本自动标记静音（必须先执行）
 
 ```bash
 node "$SKILL_DIR/scripts/mark_silence.js" ../1_转录/subtitles_words.json auto_selected.json
 # 输出: auto_selected.json（只含静音 idx）
 ```
 
-#### 5.5 AI 分析口误（追加到 auto_selected.json）
+#### 3.5 AI 分析口误（追加到 auto_selected.json）
 
 **检测规则（按优先级）**：
 
@@ -219,8 +219,8 @@ node "$SKILL_DIR/scripts/review_server.js" 8899 "$VIDEO_PATH"
 
 ```json
 [
-  {"text": "大", "start": 0.12, "end": 0.2, "isGap": false},
-  {"text": "", "start": 6.78, "end": 7.48, "isGap": true}
+  {"text": "大", "start": 0.12, "end": 0.2, "opt": "edit"},
+  {"text": "", "start": 6.78, "end": 7.48, "opt": "del"}
 ]
 ```
 

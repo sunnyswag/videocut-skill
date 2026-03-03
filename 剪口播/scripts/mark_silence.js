@@ -19,10 +19,11 @@ if (!fs.existsSync(dataFile)) {
 }
 
 const words = require(path.resolve(dataFile));
+const isGap = (w) => w.opt === 'del';
 const selected = [];
 
 words.forEach((w, i) => {
-  if (w.isGap && (w.end - w.start) >= 0.5) selected.push(i);
+  if (isGap(w) && (w.end - w.start) >= 0.5) selected.push(i);
 });
 
 fs.writeFileSync(outFile, JSON.stringify(selected, null, 2));

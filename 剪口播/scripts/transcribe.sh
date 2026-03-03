@@ -9,7 +9,6 @@
 
 VIDEO_PATH="$1"
 BASE_DIR="$2"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ -z "$VIDEO_PATH" ] || [ -z "$BASE_DIR" ]; then
   echo "❌ 用法: ./transcribe.sh <VIDEO_PATH> <BASE_DIR>"
@@ -43,4 +42,4 @@ fi
 echo "✅ 音频 URL: $AUDIO_URL"
 
 # 3. 调用火山引擎 API
-"$SCRIPT_DIR/volcengine_transcribe.sh" "$AUDIO_URL"
+./volcengine_transcribe.sh "$AUDIO_URL"

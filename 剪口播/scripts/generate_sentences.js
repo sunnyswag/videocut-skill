@@ -18,15 +18,16 @@ if (!fs.existsSync(dataFile)) {
 }
 
 const data = require(path.resolve(dataFile));
+const isGap = (w) => w.opt === 'del';
 const sentences = [];
 let curr = { text: '', startIdx: -1, endIdx: -1 };
 
 data.forEach((w, i) => {
-  const isLongGap = w.isGap && (w.end - w.start) >= 0.5;
+  const isLongGap = isGap(w) && (w.end - w.start) >= 0.5;
   if (isLongGap) {
     if (curr.text.length > 0) sentences.push({ ...curr });
     curr = { text: '', startIdx: -1, endIdx: -1 };
-  } else if (!w.isGap) {
+  } else if (!isGap(w)) {
     if (curr.startIdx === -1) curr.startIdx = i;
     curr.text += w.text;
     curr.endIdx = i;

@@ -74,7 +74,9 @@ if (deleteFile && fs.existsSync(deleteFile)) {
   console.log('映射后字数:', outputWords.length);
 }
 
-// 添加空白标记（>0.5秒的静音按1秒拆分，便于精细控制）
+// 添加空白标记（>0.5秒的静音按 2s 或更长切分，避免 1s 碎片）
+// opt: "del"=建议删除(静音), "normal"=正常内容
+const MIN_GAP_CHUNK = 2; // 长静音每段至少 2s
 const wordsWithGaps = [];
 let lastEnd = 0;
 
@@ -82,26 +84,36 @@ for (const word of outputWords) {
   const gapDuration = word.start - lastEnd;
 
   if (gapDuration > 0.1) {
-    // 如果静音 >0.5秒，按1秒拆分
     if (gapDuration > 0.5) {
+      // 长静音：按 2s 或更长切分（最后一段若 <2s 则合并到前一段）
       let gapStart = lastEnd;
+      const gapChunks = [];
       while (gapStart < word.start) {
-        const gapEnd = Math.min(gapStart + 1, word.start);
+        const remain = word.start - gapStart;
+        if (remain < MIN_GAP_CHUNK && gapChunks.length > 0) {
+          gapChunks[gapChunks.length - 1].end = word.start;
+          break;
+        }
+        const chunkEnd = remain < MIN_GAP_CHUNK
+          ? word.start
+          : Math.min(gapStart + MIN_GAP_CHUNK, word.start);
+        gapChunks.push({ start: gapStart, end: chunkEnd });
+        gapStart = chunkEnd;
+      }
+      for (const c of gapChunks) {
         wordsWithGaps.push({
           text: '',
-          start: Math.round(gapStart * 100) / 100,
-          end: Math.round(gapEnd * 100) / 100,
-          isGap: true
+          start: Math.round(c.start * 100) / 100,
+          end: Math.round(c.end * 100) / 100,
+          opt: 'del'
         });
-        gapStart = gapEnd;
       }
     } else {
-      // <0.5秒的静音保持原样
       wordsWithGaps.push({
         text: '',
         start: Math.round(lastEnd * 100) / 100,
         end: Math.round(word.start * 100) / 100,
-        isGap: true
+        opt: 'del'
       });
     }
   }
@@ -110,12 +122,12 @@ for (const word of outputWords) {
     text: word.text,
     start: word.start,
     end: word.end,
-    isGap: false
+    opt: 'normal'
   });
   lastEnd = word.end;
 }
 
-const gaps = wordsWithGaps.filter(w => w.isGap);
+const gaps = wordsWithGaps.filter(w => w.opt === 'del');
 console.log('总元素数:', wordsWithGaps.length);
 console.log('空白段数:', gaps.length);
 

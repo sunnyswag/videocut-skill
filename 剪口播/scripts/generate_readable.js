@@ -18,8 +18,10 @@ if (!fs.existsSync(dataFile)) {
 const data = require(require('path').resolve(dataFile));
 const output = [];
 
+// 兼容 opt / isGap
+const isGap = (w) => w.opt === 'del';
 data.forEach((w, i) => {
-  if (w.isGap) {
+  if (isGap(w)) {
     const dur = (w.end - w.start).toFixed(2);
     if (dur >= 0.5) {
       output.push(i + '|[静' + dur + 's]|' + w.start.toFixed(2) + '-' + w.end.toFixed(2));
