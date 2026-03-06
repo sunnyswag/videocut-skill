@@ -110,7 +110,6 @@ cd "$BASE_DIR"
 ```bash
 cd "$BASE_DIR/1_转录"
 node "$SKILL_DIR/scripts/generate_subtitles.js" volcengine_result.json
-# 输出: subtitles_words.json（opt: edit/del，长静音按 2s 或更长切分）
 cd "$BASE_DIR"
 ```
 

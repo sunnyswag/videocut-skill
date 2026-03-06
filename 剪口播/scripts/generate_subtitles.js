@@ -1,135 +1,71 @@
 #!/usr/bin/env node
 /**
- * 从火山引擎结果生成字级别字幕
+ * 在 volcengine_result 上做 opt 与 gap 插入，输出 volcengine_result_opted.json
  *
- * 用法: node generate_subtitles.js <volcengine_result.json> [delete_segments.json]
- * 输出: subtitles_words.json
+ * - 删除所有 "attribute": { "event": "speech" }（保留根 attribute.extra）
+ * - 为每个 utterance、每个 word 添加 opt: "keep"
+ * - 在相邻两项时间间隔 > 100ms 处插入 gap 节点 { opt: "del", start_time, end_time, text: "" }
+ *
+ * 用法: node generate_subtitles.js <volcengine_result.json>
+ * 输出: volcengine_result_opted.json（与输入同目录）
  */
 
 const fs = require('fs');
+const path = require('path');
 
-const resultFile = process.argv[2] || 'volcengine_result.json';
-const deleteFile = process.argv[3];
+const sourceFile = process.argv[2] || 'volcengine_result.json';
+const GAP_MS = 100;
 
-if (!fs.existsSync(resultFile)) {
-  console.error('❌ 找不到文件:', resultFile);
+function removeSpeechAttribute(obj) {
+  if (obj && typeof obj === 'object' && obj.attribute && obj.attribute.event === 'speech') {
+    const keys = Object.keys(obj.attribute);
+    if (keys.length === 1 && keys[0] === 'event') {
+      delete obj.attribute;
+    }
+  }
+}
+
+function makeGapNode(startTime, endTime) {
+  return { opt: 'blank', start_time: startTime, end_time: endTime };
+}
+
+function processEachItem(cur, preEndTime) {
+  removeSpeechAttribute(cur);
+  cur.opt = 'keep';
+
+  const currStart = typeof cur.start_time === 'number' ? cur.start_time : preEndTime;
+  const gapMs = currStart - preEndTime;
+  return gapMs > GAP_MS ? makeGapNode(preEndTime, currStart) : undefined;
+}
+
+function loopItems(items, parent = null) {
+  if (!Array.isArray(items)) return;
+  for (let i = 0; i < items.length; i++) {
+    const preEndTime = i > 0 ? items[i - 1].end_time : (parent ? parent.start_time : 0);
+    const gap = processEachItem(items[i], preEndTime);
+    if (gap) items.splice(i, 0, gap);
+  }  
+}
+
+if (!fs.existsSync(sourceFile)) {
+  console.error('❌ 找不到文件:', sourceFile);
   process.exit(1);
 }
 
-const result = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
+const source = JSON.parse(fs.readFileSync(sourceFile, 'utf8'));
 
-// 提取所有字
-const allWords = [];
-for (const utterance of result.utterances) {
-  if (utterance.words) {
-    for (const word of utterance.words) {
-      allWords.push({
-        text: word.text,
-        start: word.start_time / 1000,
-        end: word.end_time / 1000
-      });
-    }
-  }
+const utterances = source.utterances;
+if (!Array.isArray(utterances)) {
+  console.error('❌ 缺少 utterances 数组');
+  process.exit(1);
 }
 
-console.log('原始字数:', allWords.length);
+loopItems(utterances);
+utterances.forEach(u => {
+  if (u.opt !== 'del') loopItems(u.words, u);
+});
 
-// 如果有删除片段，映射时间
-let outputWords = allWords;
-
-if (deleteFile && fs.existsSync(deleteFile)) {
-  const deleteSegments = JSON.parse(fs.readFileSync(deleteFile, 'utf8'));
-  console.log('删除片段数:', deleteSegments.length);
-
-  function getDeletedTimeBefore(time) {
-    let deleted = 0;
-    for (const seg of deleteSegments) {
-      if (seg.end <= time) {
-        deleted += seg.end - seg.start;
-      } else if (seg.start < time) {
-        deleted += time - seg.start;
-      }
-    }
-    return deleted;
-  }
-
-  function isDeleted(start, end) {
-    for (const seg of deleteSegments) {
-      if (start < seg.end && end > seg.start) return true;
-    }
-    return false;
-  }
-
-  outputWords = [];
-  for (const word of allWords) {
-    if (!isDeleted(word.start, word.end)) {
-      const deletedBefore = getDeletedTimeBefore(word.start);
-      outputWords.push({
-        text: word.text,
-        start: Math.round((word.start - deletedBefore) * 100) / 100,
-        end: Math.round((word.end - deletedBefore) * 100) / 100
-      });
-    }
-  }
-  console.log('映射后字数:', outputWords.length);
-}
-
-// 添加空白标记（>0.5秒的静音按 2s 或更长切分，避免 1s 碎片）
-// opt: "del"=建议删除(静音), "normal"=正常内容
-const MIN_GAP_CHUNK = 2; // 长静音每段至少 2s
-const wordsWithGaps = [];
-let lastEnd = 0;
-
-for (const word of outputWords) {
-  const gapDuration = word.start - lastEnd;
-
-  if (gapDuration > 0.1) {
-    if (gapDuration > 0.5) {
-      // 长静音：按 2s 或更长切分（最后一段若 <2s 则合并到前一段）
-      let gapStart = lastEnd;
-      const gapChunks = [];
-      while (gapStart < word.start) {
-        const remain = word.start - gapStart;
-        if (remain < MIN_GAP_CHUNK && gapChunks.length > 0) {
-          gapChunks[gapChunks.length - 1].end = word.start;
-          break;
-        }
-        const chunkEnd = remain < MIN_GAP_CHUNK
-          ? word.start
-          : Math.min(gapStart + MIN_GAP_CHUNK, word.start);
-        gapChunks.push({ start: gapStart, end: chunkEnd });
-        gapStart = chunkEnd;
-      }
-      for (const c of gapChunks) {
-        wordsWithGaps.push({
-          text: '',
-          start: Math.round(c.start * 100) / 100,
-          end: Math.round(c.end * 100) / 100,
-          opt: 'del'
-        });
-      }
-    } else {
-      wordsWithGaps.push({
-        text: '',
-        start: Math.round(lastEnd * 100) / 100,
-        end: Math.round(word.start * 100) / 100,
-        opt: 'del'
-      });
-    }
-  }
-
-  wordsWithGaps.push({
-    text: word.text,
-    start: word.start,
-    end: word.end,
-    opt: 'normal'
-  });
-  lastEnd = word.end;
-}
-
-const gaps = wordsWithGaps.filter(w => w.opt === 'del');
-console.log('总元素数:', wordsWithGaps.length);
-console.log('空白段数:', gaps.length);
-
-fs.writeFileSync('subtitles_words.json', JSON.stringify(wordsWithGaps, null, 2));
-console.log('✅ 已保存 subtitles_words.json');
+const outDir = path.dirname(path.dirname(path.resolve(sourceFile)));
+const outFile = path.join(outDir, "common", "subtitles_words.json");
+fs.writeFileSync(outFile, JSON.stringify(utterances, null, 2), 'utf8');
+console.log('✅ 已保存', outFile);

@@ -20,6 +20,6 @@ VIDEO_NAME=$(basename "$VIDEO_PATH" .mp4)
 DATE=$(date +%Y-%m-%d)
 BASE_DIR="$WORKSPACE_ROOT/output/${DATE}_${VIDEO_NAME}/剪口播"
 
-mkdir -p "$BASE_DIR/1_转录" "$BASE_DIR/2_分析" "$BASE_DIR/3_审核"
+mkdir -p "$BASE_DIR/1_转录" "$BASE_DIR/2_分析" "$BASE_DIR/3_审核" "$BASE_DIR/common"
 
 echo "$BASE_DIR"
