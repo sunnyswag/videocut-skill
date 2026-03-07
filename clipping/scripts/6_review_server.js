@@ -6,7 +6,7 @@
  * 1. 静态服务 review.html（脚本同目录）
  * 2. GET /api/projects — 项目列表
  * 3. GET /api/data/:id — 指定项目的 words + autoSelected
- * 4. GET /api/audio/:id — 指定项目的 audio.mp3（支持 Range）
+ * 4. GET /api/video/:id — 指定项目的源视频（支持 Range）
  * 5. POST /api/cut/:id — 按项目执行剪辑
  *
  * 用法: node review_server.js [port] [root_path]
@@ -75,19 +75,35 @@ function getProjectById(projectId) {
   return projects.find(p => p.id === projectId) || null;
 }
 
+function findVideoFile(project) {
+  const parentDir = path.dirname(project.path);
+  const mp4s = fs.readdirSync(parentDir).filter(f => f.endsWith('.mp4') && !f.endsWith('_cut.mp4'));
+  if (mp4s.length > 0) return path.join(parentDir, mp4s[0]);
+
+  const macroDir = path.join(ROOT_PATH, '..', 'macro_notes');
+  if (fs.existsSync(macroDir)) {
+    const videoName = project.id.replace(/^\d{4}-\d{2}-\d{2}_/, '');
+    const candidate = path.join(macroDir, videoName + '.mp4');
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 function flattenWords(opted) {
   const out = [];
   for (const node of opted) {
+    const parentOpt = node.opt || 'keep';
     if (Array.isArray(node.words) && node.words.length > 0) {
       for (const w of node.words) {
         const start = typeof w.start_time === 'number' ? w.start_time / 1000 : (node.start_time || 0) / 1000;
         const end = typeof w.end_time === 'number' ? w.end_time / 1000 : (node.end_time || 0) / 1000;
-        out.push({ start, end, text: (w.text || '').trim(), opt: w.opt || 'keep' });
+        const opt = parentOpt === 'del' ? 'del' : (w.opt || 'keep');
+        out.push({ start, end, text: (w.text || '').trim(), opt });
       }
     } else {
       const start = (node.start_time || 0) / 1000;
       const end = (node.end_time || 0) / 1000;
-      out.push({ start, end, text: (node.text || '').trim(), opt: node.opt || 'keep' });
+      out.push({ start, end, text: (node.text || '').trim(), opt: parentOpt });
     }
   }
   return out;
@@ -137,11 +153,9 @@ const server = http.createServer((req, res) => {
       const opted = JSON.parse(fs.readFileSync(rawPath, 'utf8'));
       const words = flattenWords(opted);
 
-      let autoSelected = [];
-      const autoPath = path.join(project.path, '2_analysis', 'auto_selected.json');
-      if (fs.existsSync(autoPath)) {
-        autoSelected = JSON.parse(fs.readFileSync(autoPath, 'utf8'));
-      }
+      const autoSelected = [];
+      words.forEach((w, i) => { if (w.opt === 'del') autoSelected.push(i); });
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ words, autoSelected }));
     } catch (err) {
@@ -151,41 +165,41 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // GET /api/audio/:id
-  const audioMatch = urlPath.match(/^\/api\/audio\/(.+)$/);
-  if (req.method === 'GET' && audioMatch) {
-    const projectId = decodeURIComponent(audioMatch[1]);
+  // GET /api/video/:id
+  const videoMatch = urlPath.match(/^\/api\/video\/(.+)$/);
+  if (req.method === 'GET' && videoMatch) {
+    const projectId = decodeURIComponent(videoMatch[1]);
     const project = getProjectById(projectId);
     if (!project) {
       res.writeHead(404);
       res.end('Not Found');
       return;
     }
-    const audioPath = path.join(project.path, '1_transcribe', 'audio.mp3');
-    if (!fs.existsSync(audioPath)) {
+    const videoPath = findVideoFile(project);
+    if (!videoPath) {
       res.writeHead(404);
-      res.end('Not Found');
+      res.end('Video not found');
       return;
     }
-    const stat = fs.statSync(audioPath);
+    const stat = fs.statSync(videoPath);
     if (req.headers.range) {
       const range = req.headers.range.replace('bytes=', '').split('-');
       const start = parseInt(range[0], 10);
       const end = range[1] ? parseInt(range[1], 10) : stat.size - 1;
       res.writeHead(206, {
-        'Content-Type': 'audio/mpeg',
+        'Content-Type': 'video/mp4',
         'Content-Range': `bytes ${start}-${end}/${stat.size}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': end - start + 1,
       });
-      fs.createReadStream(audioPath, { start, end }).pipe(res);
+      fs.createReadStream(videoPath, { start, end }).pipe(res);
     } else {
       res.writeHead(200, {
-        'Content-Type': 'audio/mpeg',
+        'Content-Type': 'video/mp4',
         'Content-Length': stat.size,
         'Accept-Ranges': 'bytes'
       });
-      fs.createReadStream(audioPath).pipe(res);
+      fs.createReadStream(videoPath).pipe(res);
     }
     return;
   }

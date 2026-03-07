@@ -27,22 +27,18 @@ pos: 转录+识别，到用户网页审核为止
 ```
 output/
 └── YYYY-MM-DD_video/
-    ├── clipping/
-    │   ├── 1_transcribe/
-    │   │   ├── audio.mp3
-    │   │   └── volcengine_result.json
-    │   ├── common/
-    │   │   ├── subtitles_words.json       # 唯一数据源（opt + gap）
-    │   │   └── subtitles_words_edited.json  # 应用 edits 后
-    │   ├── 2_analysis/
-    │   │   ├── readable.txt   # 由 common 生成，供人/AI 阅读
-    │   │   ├── edits.json    # 删除/改字清单，由 apply_edits 写回
-    │   │   ├── auto_selected.json
-    │   │   └── analysis.md
-    │   └── 3_review/
-    │       └── delete_segments.json  # 执行剪辑时保存
-    └── subtitle/
-        └── ...
+  ├── 1_transcribe/
+  │   ├── audio.mp3
+  │   └── volcengine_result.json
+  ├── common/
+  │   ├── subtitles_words.json       # 唯一数据源（opt + gap）
+  │   └── subtitles_words_edited.json  # 应用 edits 后
+  ├── 2_analysis/
+  │   ├── readable.txt   # 由 common 生成，供人/AI 阅读
+  │   ├── edits.json    # 删除/改字清单，由 apply_edits 写回
+  │   └── analysis.md
+  └── 3_review/
+      └── delete_segments.json  # 执行剪辑时保存
 ```
 
 **规则**：已有文件夹则复用，否则新建。
@@ -195,7 +191,7 @@ node "$SKILL_DIR/scripts/6_review_server.js" 8899 "$ROOT_PATH"
 ```
 
 - review.html 为静态模板（位于 `$SKILL_DIR/scripts/review.html`），由服务器直接提供
-- 网页通过 API 动态加载 `common/subtitles_words_edited.json`、`2_analysis/auto_selected.json`、`1_transcribe/audio.mp3`
+- 网页通过 API 动态加载 `common/subtitles_words_edited.json`、`1_transcribe/audio.mp3`
 - 多视频时网页顶部有 Tab 栏，每个 Tab 对应一个项目，独立维护选择状态
 
 用户在网页中：
