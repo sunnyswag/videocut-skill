@@ -26,22 +26,22 @@ pos: 转录+识别，到用户网页审核为止
 
 ```
 output/
-└── YYYY-MM-DD_视频名/
-    ├── 剪口播/
-    │   ├── 1_转录/
+└── YYYY-MM-DD_video/
+    ├── clipping/
+    │   ├── 1_transcribe/
     │   │   ├── audio.mp3
     │   │   └── volcengine_result.json
     │   ├── common/
     │   │   ├── subtitles_words.json       # 唯一数据源（opt + gap）
     │   │   └── subtitles_words_edited.json  # 应用 edits 后
-    │   ├── 2_分析/
+    │   ├── 2_analysis/
     │   │   ├── readable.txt   # 由 common 生成，供人/AI 阅读
     │   │   ├── edits.json    # 删除/改字清单，由 apply_edits 写回
     │   │   ├── auto_selected.json
-    │   │   └── 口误分析.md
-    │   └── 3_审核/
+    │   │   └── analysis.md
+    │   └── 3_review/
     │       └── delete_segments.json  # 执行剪辑时保存
-    └── 字幕/
+    └── subtitle/
         └── ...
 ```
 
@@ -86,7 +86,7 @@ output/
 
 ## 执行步骤
 
-**变量约定**：`VIDEO_PATH`=视频路径；`SKILL_DIR`=剪口播目录（本 SKILL 所在文件夹）；`BASE_DIR`=0_setup_output 返回值。在项目根执行时 `0_setup_output` 会创建 `output/`。
+**变量约定**：`VIDEO_PATH`=视频路径；`SKILL_DIR`=clipping 目录（本 SKILL 所在文件夹）；`BASE_DIR`=0_setup_output 返回值。在项目根执行时 `0_setup_output` 会创建 `output/`。
 
 ### 步骤 0: 创建输出目录
 
@@ -100,13 +100,13 @@ cd "$BASE_DIR"
 
 ```bash
 "$SKILL_DIR/scripts/1_transcribe.sh" "$VIDEO_PATH" "$BASE_DIR"
-# 输出: 1_转录/audio.mp3, volcengine_result.json
+# 输出: 1_transcribe/audio.mp3, volcengine_result.json
 ```
 
 ### 步骤 2: 拆分字幕（opt + gap 插入）
 
 ```bash
-cd "$BASE_DIR/1_转录"
+cd "$BASE_DIR/1_transcribe"
 node "$SKILL_DIR/scripts/2_generate_subtitles.js" volcengine_result.json
 # 输出: common/subtitles_words.json（唯一数据源）
 cd "$BASE_DIR"
@@ -117,14 +117,14 @@ cd "$BASE_DIR"
 #### 3.1 生成易读格式
 
 ```bash
-cd "$BASE_DIR/2_分析"
+cd "$BASE_DIR/2_analysis"
 node "$SKILL_DIR/scripts/3_generate_readable.js" ../common/subtitles_words.json
 # 输出: readable.txt（层级 i|内容、j|字，所有下标 0-based，与 edits pathSet 一致）
 ```
 
 #### 3.2 读取用户习惯
 
-先读 `$SKILL_DIR/用户习惯/` 目录下所有规则文件。
+先读 `$SKILL_DIR/rules/` 目录下所有规则文件。
 读取 `BASE_DIR` 下用户提供的脚本，理解视频上下文。
 
 #### 3.3 AI 分析：剔除静音/口误 + 修正字幕文案（输出 edits.json）
@@ -133,7 +133,7 @@ AI 读取 readable.txt，结合视频上下文（用户脚本/口述内容），
 1. **剔除**：把静音段（blank）和口误片段标记为删除。
 2. **修正**：根据视频实际内容纠正 ASR 转录错字（如专有名词、同音错字）。
 
-产出写入 `2_分析/edits.json`，格式和协议内容参考 `$SKILL_DIR/scripts/edits.example.json`。
+产出写入 `2_analysis/edits.json`，格式和协议内容参考 `$SKILL_DIR/scripts/edits.example.json`。
 pathSet 有三种形态：`{ parent: i }`（整句）、`{ parent: i, children: [j] }`（单个子节点）、`{ parent: i, children: [j, k] }`（多个子节点），所有下标 0-based。deletes 可以是整句或子节点级别，textChanges 和 combines 只能是子节点级别。
 
 **剔除规则（deletes，按优先级）**：
@@ -167,18 +167,18 @@ pathSet 有三种形态：`{ parent: i }`（整句）、`{ parent: i, children: 
 1. Read readable.txt offset=N limit=100（每段约 100 行，含句行+字行）
 2. 分析这 100 行：标记要删除的 path、要修正的 text
 3. 将 deletes 和 textChanges 追加到 edits.json
-4. 记录分析过程到 口误分析.md
+4. 记录分析过程到 analysis.md
 5. N += 100，回到步骤 1
 ```
 
 #### 3.6 维护 edits.json 并回写 JSON
 
-以 **common/subtitles_words.json** 为唯一数据源。AI 或人工在 readable 上标注的「删/改」写入 `2_分析/edits.json`，再通过脚本写回：
+以 **common/subtitles_words.json** 为唯一数据源。AI 或人工在 readable 上标注的「删/改」写入 `2_analysis/edits.json`，再通过脚本写回：
 
 ```bash
-# 编辑 2_分析/edits.json（格式见下方「数据格式」），然后：
+# 编辑 2_analysis/edits.json（格式见下方「数据格式」），然后：
 cd "$BASE_DIR"
-node "$SKILL_DIR/scripts/3_apply_edits.js" common/subtitles_words.json 2_分析/edits.json
+node "$SKILL_DIR/scripts/3_apply_edits.js" common/subtitles_words.json 2_analysis/edits.json
 # 输出: common/subtitles_words_edited.json
 ```
 
@@ -195,7 +195,7 @@ node "$SKILL_DIR/scripts/6_review_server.js" 8899 "$ROOT_PATH"
 ```
 
 - review.html 为静态模板（位于 `$SKILL_DIR/scripts/review.html`），由服务器直接提供
-- 网页通过 API 动态加载 `common/subtitles_words_edited.json`、`2_分析/auto_selected.json`、`1_转录/audio.mp3`
+- 网页通过 API 动态加载 `common/subtitles_words_edited.json`、`2_analysis/auto_selected.json`、`1_transcribe/audio.mp3`
 - 多视频时网页顶部有 Tab 栏，每个 Tab 对应一个项目，独立维护选择状态
 
 用户在网页中：
@@ -208,7 +208,7 @@ node "$SKILL_DIR/scripts/6_review_server.js" 8899 "$ROOT_PATH"
 
 ## 数据格式
 
-### edits.json（2_分析）
+### edits.json（2_analysis）
 
 ```json
 {

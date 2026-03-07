@@ -47,10 +47,10 @@ curl -s -F "files[]=@audio.mp3" https://uguu.se/upload
 转录脚本会**自动读取词典**作为热词，提高识别准确率：
 
 ```bash
-# 词典位置: /Users/chengfeng/Desktop/AIos/剪辑Agent/.claude/skills/字幕/词典.txt
-# 脚本会自动加载
+# dictionary: $SKILL_DIR/../subtitle/dictionary.txt
+# auto-loaded by transcribe script
 
-bash ../剪口播/scripts/volcengine_transcribe.sh "https://o.uguu.se/xxxxx.mp3"
+bash ../clipping/scripts/1_volcengine_transcribe.sh "https://o.uguu.se/xxxxx.mp3"
 ```
 
 **词典格式**（每行一个词）：
@@ -132,7 +132,7 @@ Agent 应：
 
 ```bash
 cd 字幕目录/
-node /path/to/skills/字幕/scripts/subtitle_server.js 8898 "video.mp4"
+node /path/to/skills/subtitle/scripts/subtitle_server.js 8898 "video.mp4"
 ```
 
 访问 http://localhost:8898
@@ -174,8 +174,8 @@ ffmpeg -i "video.mp4" \
 ## 目录结构
 
 ```
-output/YYYY-MM-DD_视频名/字幕/
-├── 1_转录/
+output/YYYY-MM-DD_video/subtitle/
+├── 1_transcribe/
 │   ├── audio.mp3
 │   └── volcengine_result.json
 ├── subtitles_with_time.json    # 核心文件

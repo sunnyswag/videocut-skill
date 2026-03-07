@@ -26,7 +26,7 @@ if (fs.existsSync(SUBTITLES_FILE)) {
 }
 
 // 读取词典
-const DICT_FILE = path.join(__dirname, '..', '词典.txt');
+const DICT_FILE = path.join(__dirname, '..', 'dictionary.txt');
 let dictionary = [];
 if (fs.existsSync(DICT_FILE)) {
   dictionary = fs.readFileSync(DICT_FILE, 'utf8').split('\n').filter(l => l.trim());

@@ -10,7 +10,7 @@
  * 5. POST /api/cut/:id — 按项目执行剪辑
  *
  * 用法: node review_server.js [port] [root_path]
- * - root_path 由调用方（如 AI）传入；可传单项目目录（.../剪口播）或父目录（如 output/）。未传时兜底为 process.cwd() 或 ./output
+ * - root_path 由调用方（如 AI）传入；可传单项目目录（.../clipping）或父目录（如 output/）。未传时兜底为 process.cwd() 或 ./output
  */
 
 const http = require('http');
@@ -54,7 +54,7 @@ function getProjects() {
   }
   const dirs = fs.readdirSync(ROOT_PATH);
   for (const d of dirs) {
-    const projectRoot = path.join(ROOT_PATH, d, '剪口播');
+    const projectRoot = path.join(ROOT_PATH, d, 'clipping');
     const commonDir = path.join(projectRoot, 'common');
     const edited = path.join(commonDir, 'subtitles_words_edited.json');
     const fallback = path.join(commonDir, 'subtitles_words.json');
@@ -138,7 +138,7 @@ const server = http.createServer((req, res) => {
       const words = flattenWords(opted);
 
       let autoSelected = [];
-      const autoPath = path.join(project.path, '2_分析', 'auto_selected.json');
+      const autoPath = path.join(project.path, '2_analysis', 'auto_selected.json');
       if (fs.existsSync(autoPath)) {
         autoSelected = JSON.parse(fs.readFileSync(autoPath, 'utf8'));
       }
@@ -161,7 +161,7 @@ const server = http.createServer((req, res) => {
       res.end('Not Found');
       return;
     }
-    const audioPath = path.join(project.path, '1_转录', 'audio.mp3');
+    const audioPath = path.join(project.path, '1_transcribe', 'audio.mp3');
     if (!fs.existsSync(audioPath)) {
       res.writeHead(404);
       res.end('Not Found');
@@ -321,7 +321,7 @@ function executeFFmpegCut(input, deleteList, output, projectPath) {
   console.log(`⚙️ 优化参数: 扩展范围=${BUFFER_MS}ms, 音频crossfade=${CROSSFADE_MS}ms`);
 
   let audioOffset = 0;
-  const audioPath = projectPath ? path.join(projectPath, '1_转录', 'audio.mp3') : 'audio.mp3';
+  const audioPath = projectPath ? path.join(projectPath, '1_transcribe', 'audio.mp3') : 'audio.mp3';
   try {
     if (fs.existsSync(audioPath)) {
       const offsetCmd = `ffprobe -v error -show_entries format=start_time -of csv=p=0 "${audioPath}"`;

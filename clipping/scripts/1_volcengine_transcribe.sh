@@ -29,7 +29,7 @@ echo "🎤 提交火山引擎转录任务..."
 echo "音频 URL: $AUDIO_URL"
 
 # 读取热词词典
-DICT_FILE="$(dirname "$SCRIPT_DIR")/字幕/词典.txt"
+DICT_FILE="$(dirname "$SCRIPT_DIR")/subtitle/dictionary.txt"
 HOT_WORDS=""
 if [ -f "$DICT_FILE" ]; then
   # 把词典转换成 JSON 数组格式

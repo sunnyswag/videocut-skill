@@ -179,7 +179,7 @@ videocut/
 
 ### Q: 如何添加自定义词典？
 
-编辑 `字幕/词典.txt`，每行一个词：
+编辑 `subtitle/dictionary.txt`，每行一个词：
 ```
 Claude Code
 MCP

@@ -3,8 +3,8 @@
 # 步骤 1-3: 提取音频 → 上传 uguu.se → 火山引擎转录
 #
 # 用法: ./transcribe.sh <VIDEO_PATH> <BASE_DIR>
-#   BASE_DIR: 剪口播输出目录（setup_output.sh 的返回值）
-# 输出: BASE_DIR/1_转录/audio.mp3, volcengine_result.json
+#   BASE_DIR: clipping output dir (return value of 0_setup_output.sh)
+# Output: BASE_DIR/1_transcribe/audio.mp3, volcengine_result.json
 #
 
 VIDEO_PATH="$1"
@@ -15,12 +15,12 @@ if [ -z "$VIDEO_PATH" ] || [ -z "$BASE_DIR" ]; then
   exit 1
 fi
 
-if [ ! -d "$BASE_DIR/1_转录" ]; then
-  echo "❌ 目录不存在: $BASE_DIR/1_转录，请先运行 setup_output.sh"
+if [ ! -d "$BASE_DIR/1_transcribe" ]; then
+  echo "❌ Directory not found: $BASE_DIR/1_transcribe, run 0_setup_output.sh first"
   exit 1
 fi
 
-cd "$BASE_DIR/1_转录" || exit 1
+cd "$BASE_DIR/1_transcribe" || exit 1
 
 # 1. 提取音频（文件名有冒号需加 file: 前缀）
 echo "🎵 提取音频..."

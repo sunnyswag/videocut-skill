@@ -7,7 +7,7 @@
  * - 在相邻两项时间间隔 > 100ms 处插入 gap 节点 { opt: "blank", start_time, end_time }
  *
  * 用法: node generate_subtitles.js <volcengine_result.json>
- * 输出: common/subtitles_words.json（与 1_转录 同级的 common 目录）
+ * 输出: common/subtitles_words.json（与 1_transcribe 同级的 common 目录）
  */
 
 const fs = require('fs');

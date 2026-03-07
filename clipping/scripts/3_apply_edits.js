@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 
 const optedFile = process.argv[2] || 'common/subtitles_words.json';
-const editsFile = process.argv[3] || path.join(path.dirname(path.resolve(optedFile)), '..', '2_分析', 'edits.json');
+const editsFile = process.argv[3] || path.join(path.dirname(path.resolve(optedFile)), '..', '2_analysis', 'edits.json');
 
 if (!fs.existsSync(optedFile)) {
   console.error('❌ 找不到 opted 文件:', optedFile);
