@@ -32,6 +32,8 @@ function App() {
         onCopyDeleteList=${state.handleCopyDeleteList}
         onExecuteCut=${state.handleExecuteCut}
         onClearAll=${state.handleClearAll}
+        burnSubtitle=${state.burnSubtitle}
+        onBurnSubtitleChange=${state.setBurnSubtitle}
         formatTime=${formatTime}
       />
       <${WordTimeline}

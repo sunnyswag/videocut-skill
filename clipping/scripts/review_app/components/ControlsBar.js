@@ -9,6 +9,8 @@ export function ControlsBar({
   onCopyDeleteList,
   onExecuteCut,
   onClearAll,
+  burnSubtitle,
+  onBurnSubtitleChange,
   formatTime,
 }) {
   return html`
@@ -31,7 +33,12 @@ export function ControlsBar({
         <button id="btnCopy" onClick=${onCopyDeleteList}>📋 复制删除列表</button>
         <button id="btnCut" style="background:#9C27B0" onClick=${onExecuteCut}>🎬 执行剪辑</button>
         <label style="font-size:14px;display:flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" id="burnSubtitle" /> 剪辑后烧录字幕
+          <input
+            type="checkbox"
+            id="burnSubtitle"
+            checked=${burnSubtitle}
+            onChange=${(e) => onBurnSubtitleChange(e.target.checked)}
+          /> 剪辑后烧录字幕
         </label>
         <button class="danger" id="btnClear" onClick=${onClearAll}>🗑️ 清空选择</button>
         <span id="time">${formatTime(currentTime)} / ${formatTime(duration)}</span>
