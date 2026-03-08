@@ -16,7 +16,9 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { cutVideo } = require('./6_cut_video');
+const { deepClone, applyEditsToOpted, buildDeleteSegmentsFromDeletes } = require('./edits_utils');
+const { generateSrt, buildSubtitlesFromEditedOpted, burnSubtitles } = require('./subtitle_utils');
 
 const PORT = parseInt(process.argv[2], 10) || 8899;
 const ROOT_PATH = path.resolve(process.argv[3] || path.join(process.cwd(), 'output'));
@@ -91,22 +93,44 @@ function findVideoFile(project) {
 
 function flattenWords(opted) {
   const out = [];
-  for (const node of opted) {
+  opted.forEach((node, parentIndex) => {
     const parentOpt = node.opt || 'keep';
     if (Array.isArray(node.words) && node.words.length > 0) {
-      for (const w of node.words) {
+      node.words.forEach((w, childIndex) => {
         const start = typeof w.start_time === 'number' ? w.start_time / 1000 : (node.start_time || 0) / 1000;
         const end = typeof w.end_time === 'number' ? w.end_time / 1000 : (node.end_time || 0) / 1000;
         const opt = parentOpt === 'del' ? 'del' : (w.opt || 'keep');
-        out.push({ start, end, text: (w.text || '').trim(), opt });
-      }
+        out.push({ start, end, text: (w.text || '').trim(), opt, parentIndex, childIndex });
+      });
     } else {
       const start = (node.start_time || 0) / 1000;
       const end = (node.end_time || 0) / 1000;
-      out.push({ start, end, text: (node.text || '').trim(), opt: parentOpt });
+      out.push({ start, end, text: (node.text || '').trim(), opt: parentOpt, parentIndex, childIndex: undefined });
     }
-  }
+  });
   return out;
+}
+
+function loadProjectWordsRaw(project) {
+  const commonDir = path.join(project.path, 'common');
+  const editedPath = path.join(commonDir, 'subtitles_words_edited.json');
+  const wordsPath = path.join(commonDir, 'subtitles_words.json');
+  const rawPath = fs.existsSync(editedPath) ? editedPath : wordsPath;
+  return {
+    rawPath,
+    opted: JSON.parse(fs.readFileSync(rawPath, 'utf8')),
+  };
+}
+
+function normalizeEditsPayload(payload) {
+  if (Array.isArray(payload)) {
+    return { deletes: payload.map((seg) => ({ start: seg.start, end: seg.end })), burnSubtitle: false };
+  }
+
+  const deletes = Array.isArray(payload?.deletes) ? payload.deletes : [];
+  const burnSubtitle = Boolean(payload?.burnSubtitle);
+
+  return { deletes, burnSubtitle };
 }
 
 function handleGetProjects(req, res) {
@@ -129,11 +153,7 @@ function handleGetData(req, res, m) {
     return;
   }
   try {
-    const commonDir = path.join(project.path, 'common');
-    const editedPath = path.join(commonDir, 'subtitles_words_edited.json');
-    const wordsPath = path.join(commonDir, 'subtitles_words.json');
-    const rawPath = fs.existsSync(editedPath) ? editedPath : wordsPath;
-    const opted = JSON.parse(fs.readFileSync(rawPath, 'utf8'));
+    const { opted } = loadProjectWordsRaw(project);
     const words = flattenWords(opted);
     const autoSelected = [];
     words.forEach((w, i) => { if (w.opt === 'del') autoSelected.push(i); });
@@ -193,7 +213,7 @@ function handlePostCut(req, res, m) {
   req.on('data', chunk => body += chunk);
   req.on('end', () => {
     try {
-      const deleteList = JSON.parse(body);
+      const requestPayload = JSON.parse(body);
       const parentDir = path.dirname(project.path);
       const videoFiles = fs.readdirSync(parentDir).filter(f => f.endsWith('.mp4'));
       const videoFile = videoFiles[0];
@@ -205,31 +225,53 @@ function handlePostCut(req, res, m) {
       const inputPath = path.join(parentDir, videoFile);
       const baseName = path.basename(videoFile, '.mp4');
       const outputFile = path.join(parentDir, `${baseName}_cut.mp4`);
-      const deletePath = path.join(project.path, 'delete_segments.json');
-      fs.writeFileSync(deletePath, JSON.stringify(deleteList, null, 2));
-      console.log(`📝 保存 ${deleteList.length} 个删除片段: ${deletePath}`);
+      const { opted } = loadProjectWordsRaw(project);
+      const normalized = normalizeEditsPayload(requestPayload);
+      const deleteSegments = buildDeleteSegmentsFromDeletes(opted, normalized.deletes);
 
-      const scriptPath = path.join(SCRIPT_DIR, '6_cut_video.sh');
-      if (fs.existsSync(scriptPath)) {
-        execSync(`bash "${scriptPath}" "${inputPath}" "${deletePath}" "${outputFile}"`, { stdio: 'inherit' });
-      } else {
-        executeFFmpegCut(inputPath, deleteList, outputFile, project.path);
+      if (deleteSegments.length === 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: '删除片段为空，请先选择要删除的内容' }));
+        return;
       }
 
-      const originalDuration = parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of csv=p=0 "file:${inputPath}"`).toString().trim());
-      const newDuration = parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of csv=p=0 "file:${outputFile}"`).toString().trim());
+      const editsPath = path.join(project.path, 'edits.json');
+      const deletePath = path.join(project.path, 'delete_segments.json');
+      fs.writeFileSync(editsPath, JSON.stringify({ deletes: normalized.deletes }, null, 2));
+      fs.writeFileSync(deletePath, JSON.stringify(deleteSegments, null, 2));
+      console.log(`📝 保存编辑: ${editsPath}`);
+      console.log(`📝 保存 ${deleteSegments.length} 个删除片段: ${deletePath}`);
+
+      const cutResult = cutVideo(inputPath, deleteSegments, outputFile, project.path);
+      const originalDuration = cutResult.originalDuration;
+      const newDuration = cutResult.newDuration;
       const deletedDuration = originalDuration - newDuration;
       const savedPercent = ((deletedDuration / originalDuration) * 100).toFixed(1);
+
+      let subtitleOutput = null;
+      let srtPath = null;
+      if (normalized.burnSubtitle) {
+        const editedOpted = applyEditsToOpted(deepClone(opted), { deletes: normalized.deletes });
+        const subtitles = buildSubtitlesFromEditedOpted(editedOpted, cutResult.audioOffset, cutResult.keepSegments);
+        srtPath = path.join(parentDir, `${baseName}_cut.srt`);
+        fs.writeFileSync(srtPath, generateSrt(subtitles));
+        subtitleOutput = path.join(parentDir, `${baseName}_cut_字幕.mp4`);
+        burnSubtitles(outputFile, srtPath, subtitleOutput);
+      }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         success: true,
         output: outputFile,
+        subtitleOutput,
+        srtPath,
+        editsPath,
+        deletePath,
         originalDuration: originalDuration.toFixed(2),
         newDuration: newDuration.toFixed(2),
         deletedDuration: deletedDuration.toFixed(2),
         savedPercent: savedPercent,
-        message: `剪辑完成: ${outputFile}`
+        message: normalized.burnSubtitle ? `剪辑+烧录完成: ${subtitleOutput || outputFile}` : `剪辑完成: ${outputFile}`
       }));
     } catch (err) {
       console.error('❌ 剪辑失败:', err.message);
@@ -286,192 +328,6 @@ const server = http.createServer((req, res) => {
     res.end('Not Found');
   }
 });
-
-// 检测可用的硬件编码器
-function detectEncoder() {
-  const platform = process.platform;
-  const encoders = [];
-
-  // 根据平台确定候选编码器
-  if (platform === 'darwin') {
-    encoders.push({ name: 'h264_videotoolbox', args: '-q:v 60', label: 'VideoToolbox (macOS)' });
-  } else if (platform === 'win32') {
-    encoders.push({ name: 'h264_nvenc', args: '-preset p4 -cq 20', label: 'NVENC (NVIDIA)' });
-    encoders.push({ name: 'h264_qsv', args: '-global_quality 20', label: 'QSV (Intel)' });
-    encoders.push({ name: 'h264_amf', args: '-quality balanced', label: 'AMF (AMD)' });
-  } else {
-    // Linux
-    encoders.push({ name: 'h264_nvenc', args: '-preset p4 -cq 20', label: 'NVENC (NVIDIA)' });
-    encoders.push({ name: 'h264_vaapi', args: '-qp 20', label: 'VAAPI (Linux)' });
-  }
-
-  // 软件编码兜底
-  encoders.push({ name: 'libx264', args: '-preset fast -crf 18', label: 'x264 (软件)' });
-
-  // 检测哪个可用
-  for (const enc of encoders) {
-    try {
-      execSync(`ffmpeg -hide_banner -encoders 2>/dev/null | grep ${enc.name}`, { stdio: 'pipe' });
-      console.log(`🎯 检测到编码器: ${enc.label}`);
-      return enc;
-    } catch (e) {
-      // 该编码器不可用，继续检测下一个
-    }
-  }
-
-  // 默认返回软件编码
-  return { name: 'libx264', args: '-preset fast -crf 18', label: 'x264 (软件)' };
-}
-
-// 缓存编码器检测结果
-let cachedEncoder = null;
-function getEncoder() {
-  if (!cachedEncoder) {
-    cachedEncoder = detectEncoder();
-  }
-  return cachedEncoder;
-}
-
-// 内置 FFmpeg 剪辑逻辑（filter_complex 精确剪辑 + buffer + crossfade）
-function executeFFmpegCut(input, deleteList, output, projectPath) {
-  const BUFFER_MS = 50;
-  const CROSSFADE_MS = 30;
-
-  console.log(`⚙️ 优化参数: 扩展范围=${BUFFER_MS}ms, 音频crossfade=${CROSSFADE_MS}ms`);
-
-  let audioOffset = 0;
-  const audioPath = projectPath ? path.join(projectPath, '1_transcribe', 'audio.mp3') : 'audio.mp3';
-  try {
-    if (fs.existsSync(audioPath)) {
-      const offsetCmd = `ffprobe -v error -show_entries format=start_time -of csv=p=0 "${audioPath}"`;
-      audioOffset = parseFloat(execSync(offsetCmd).toString().trim()) || 0;
-      if (audioOffset > 0) {
-        console.log(`🔧 检测到音频偏移: ${audioOffset.toFixed(3)}s，自动补偿`);
-      }
-    }
-  } catch (e) {
-    // 忽略
-  }
-
-  // 获取视频总时长
-  const probeCmd = `ffprobe -v error -show_entries format=duration -of csv=p=0 "file:${input}"`;
-  const duration = parseFloat(execSync(probeCmd).toString().trim());
-
-  const bufferSec = BUFFER_MS / 1000;
-  const crossfadeSec = CROSSFADE_MS / 1000;
-
-  // 补偿偏移 + 扩展删除范围（前后各加 buffer）
-  const expandedDelete = deleteList
-    .map(seg => ({
-      start: Math.max(0, seg.start - audioOffset - bufferSec),
-      end: Math.min(duration, seg.end - audioOffset + bufferSec)
-    }))
-    .sort((a, b) => a.start - b.start);
-
-  // 合并重叠的删除段
-  const mergedDelete = [];
-  for (const seg of expandedDelete) {
-    if (mergedDelete.length === 0 || seg.start > mergedDelete[mergedDelete.length - 1].end) {
-      mergedDelete.push({ ...seg });
-    } else {
-      mergedDelete[mergedDelete.length - 1].end = Math.max(mergedDelete[mergedDelete.length - 1].end, seg.end);
-    }
-  }
-
-  // 计算保留片段
-  const keepSegments = [];
-  let cursor = 0;
-
-  for (const del of mergedDelete) {
-    if (del.start > cursor) {
-      keepSegments.push({ start: cursor, end: del.start });
-    }
-    cursor = del.end;
-  }
-  if (cursor < duration) {
-    keepSegments.push({ start: cursor, end: duration });
-  }
-
-  console.log(`保留 ${keepSegments.length} 个片段，删除 ${mergedDelete.length} 个片段`);
-
-  // 生成 filter_complex（带 crossfade）
-  let filters = [];
-  let vconcat = '';
-
-  for (let i = 0; i < keepSegments.length; i++) {
-    const seg = keepSegments[i];
-    filters.push(`[0:v]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
-    filters.push(`[0:a]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
-    vconcat += `[v${i}]`;
-  }
-
-  // 视频直接 concat
-  filters.push(`${vconcat}concat=n=${keepSegments.length}:v=1:a=0[outv]`);
-
-  // 音频使用 acrossfade 逐个拼接（消除接缝咔声）
-  if (keepSegments.length === 1) {
-    filters.push(`[a0]anull[outa]`);
-  } else {
-    let currentLabel = 'a0';
-    for (let i = 1; i < keepSegments.length; i++) {
-      const nextLabel = `a${i}`;
-      const outLabel = (i === keepSegments.length - 1) ? 'outa' : `amid${i}`;
-      filters.push(`[${currentLabel}][${nextLabel}]acrossfade=d=${crossfadeSec.toFixed(3)}:c1=tri:c2=tri[${outLabel}]`);
-      currentLabel = outLabel;
-    }
-  }
-
-  const filterComplex = filters.join(';');
-
-  const encoder = getEncoder();
-  console.log(`✂️ 执行 FFmpeg 精确剪辑（${encoder.label}）...`);
-
-  const cmd = `ffmpeg -y -i "file:${input}" -filter_complex "${filterComplex}" -map "[outv]" -map "[outa]" -c:v ${encoder.name} ${encoder.args} -c:a aac -b:a 192k "file:${output}"`;
-
-  try {
-    execSync(cmd, { stdio: 'pipe' });
-    console.log(`✅ 输出: ${output}`);
-
-    const newDuration = parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of csv=p=0 "file:${output}"`).toString().trim());
-    console.log(`📹 新时长: ${newDuration.toFixed(2)}s`);
-  } catch (err) {
-    console.error('FFmpeg 执行失败，尝试分段方案...');
-    executeFFmpegCutFallback(input, keepSegments, output);
-  }
-}
-
-// 备用方案：分段切割 + concat（当 filter_complex 失败时使用）
-function executeFFmpegCutFallback(input, keepSegments, output) {
-  const tmpDir = `tmp_cut_${Date.now()}`;
-  fs.mkdirSync(tmpDir, { recursive: true });
-
-  try {
-    const partFiles = [];
-    keepSegments.forEach((seg, i) => {
-      const partFile = path.join(tmpDir, `part${i.toString().padStart(4, '0')}.mp4`);
-      const segDuration = seg.end - seg.start;
-
-      const encoder = getEncoder();
-      const cmd = `ffmpeg -y -ss ${seg.start.toFixed(3)} -i "file:${input}" -t ${segDuration.toFixed(3)} -c:v ${encoder.name} ${encoder.args} -c:a aac -b:a 128k -avoid_negative_ts make_zero "${partFile}"`;
-
-      console.log(`切割片段 ${i + 1}/${keepSegments.length}: ${seg.start.toFixed(2)}s - ${seg.end.toFixed(2)}s`);
-      execSync(cmd, { stdio: 'pipe' });
-      partFiles.push(partFile);
-    });
-
-    const listFile = path.join(tmpDir, 'list.txt');
-    const listContent = partFiles.map(f => `file '${path.resolve(f)}'`).join('\n');
-    fs.writeFileSync(listFile, listContent);
-
-    const concatCmd = `ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${output}"`;
-    console.log('合并片段...');
-    execSync(concatCmd, { stdio: 'pipe' });
-
-    console.log(`✅ 输出: ${output}`);
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
-}
 
 server.listen(PORT, () => {
   const projects = getProjects();

@@ -207,6 +207,9 @@
       </select>
       <button id="btnCopy">📋 复制删除列表</button>
       <button id="btnCut" style="background:#9C27B0">🎬 执行剪辑</button>
+      <label style="font-size:14px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="burnSubtitle"> 剪辑后烧录字幕
+      </label>
       <button class="danger" id="btnClear">🗑️ 清空选择</button>
       <span id="time">00:00 / 00:00</span>
     </div>
@@ -428,12 +431,58 @@
       updateStats();
     }
 
+    function buildEditsPayload(words, selected, burnSubtitle) {
+      const parentMeta = new Map();
+      words.forEach((w) => {
+        if (typeof w.parentIndex !== 'number') return;
+        if (!parentMeta.has(w.parentIndex)) {
+          parentMeta.set(w.parentIndex, { childSet: new Set(), hasWholeLeaf: false });
+        }
+        const meta = parentMeta.get(w.parentIndex);
+        if (typeof w.childIndex === 'number') meta.childSet.add(w.childIndex);
+        else meta.hasWholeLeaf = true;
+      });
+
+      const selectedByParent = new Map();
+      Array.from(selected).forEach((idx) => {
+        const w = words[idx];
+        if (!w || typeof w.parentIndex !== 'number') return;
+        if (!selectedByParent.has(w.parentIndex)) {
+          selectedByParent.set(w.parentIndex, { hasWholeLeaf: false, childSet: new Set() });
+        }
+        const item = selectedByParent.get(w.parentIndex);
+        if (typeof w.childIndex === 'number') item.childSet.add(w.childIndex);
+        else item.hasWholeLeaf = true;
+      });
+
+      const deletes = [];
+      Array.from(selectedByParent.keys()).sort((a, b) => a - b).forEach((parent) => {
+        const selectedMeta = selectedByParent.get(parent);
+        const allMeta = parentMeta.get(parent) || { childSet: new Set(), hasWholeLeaf: false };
+        const allChildren = Array.from(allMeta.childSet).sort((a, b) => a - b);
+        const selectedChildren = Array.from(selectedMeta.childSet).sort((a, b) => a - b);
+
+        const isWholeParent = selectedMeta.hasWholeLeaf
+          || allMeta.hasWholeLeaf
+          || (allChildren.length > 0 && selectedChildren.length === allChildren.length);
+
+        if (isWholeParent) deletes.push({ pathSet: { parent } });
+        else if (selectedChildren.length > 0) deletes.push({ pathSet: { parent, children: selectedChildren } });
+      });
+
+      return { deletes, burnSubtitle };
+    }
+
     async function executeCut() {
       const state = getCurrentState();
       if (!state || !currentProjectId) return;
       const { words, selected } = state;
-      const sortedSelected = Array.from(selected).sort((a, b) => a - b);
-      const segments = sortedSelected.map(i => ({ start: words[i].start, end: words[i].end }));
+      const burnSubtitle = document.getElementById('burnSubtitle').checked;
+      const payload = buildEditsPayload(words, selected, burnSubtitle);
+      if (!payload.deletes.length) {
+        alert('请先选择要删除的内容');
+        return;
+      }
 
       const duration = video.duration || 0;
       const estimatedTime = Math.max(5, Math.ceil(duration / 4));
@@ -461,7 +510,7 @@
         const res = await fetch('/api/cut/' + encodeURIComponent(currentProjectId), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(segments)
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         clearInterval(timer);
@@ -472,7 +521,8 @@
         const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
         if (data.success) {
-          alert(`✅ 剪辑完成！(耗时 ${totalTime}s)\n\n📁 输出: ${data.output}\n\n原时长: ${formatDuration(data.originalDuration)}\n新时长: ${formatDuration(data.newDuration)}\n删减: ${formatDuration(data.deletedDuration)} (${data.savedPercent}%)`);
+          const subtitleMsg = data.subtitleOutput ? `\n字幕输出: ${data.subtitleOutput}` : '';
+          alert(`✅ 剪辑完成！(耗时 ${totalTime}s)\n\n📁 输出: ${data.output}${subtitleMsg}\n\n原时长: ${formatDuration(data.originalDuration)}\n新时长: ${formatDuration(data.newDuration)}\n删减: ${formatDuration(data.deletedDuration)} (${data.savedPercent}%)`);
         } else {
           alert('❌ 剪辑失败: ' + data.error);
         }

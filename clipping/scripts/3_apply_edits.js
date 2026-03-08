@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { applyEditsToOpted, deepClone } = require('./edits_utils');
 
 const optedFile = process.argv[2] || 'common/subtitles_words.json';
 const editsFile = process.argv[3] || path.join(path.dirname(path.resolve(optedFile)), '..', '2_analysis', 'edits.json');
@@ -37,71 +38,10 @@ if (!fs.existsSync(editsFile)) {
 }
 
 const edits = JSON.parse(fs.readFileSync(editsFile, 'utf8'));
-
-function processItem(items, func, str) {
-  if (!Array.isArray(items)) return;
-  for (const editItem of items) {
-    const parent = opted[editItem.pathSet.parent];
-    if ('children' in editItem.pathSet) {
-      const sorted = editItem.pathSet.children.sort((a, b) => a - b);
-      for (let i = 0; i < sorted.length; i++)
-        func(parent.words[sorted[i]], editItem, i);
-    } else {
-      func(parent, editItem, 0);
-    }
-  }
-  console.log(`已应用 ${str}:`, items.length, '个节点');
-}
-
-// 1. deletes
-processItem(edits.deletes, (node) => {
-  node.opt = 'del';
-}, 'deletes');
-
-// 2. textChanges
-processItem(edits.textChanges, (node, editItem) => {
-  node.text = String(editItem.newText);
-  node.opt = 'edit';
-}, 'textChanges');
-
-// 3. combines：首个子节点保留合并文本和时间范围，其余标记删除
-processItem(edits.combines, (() => {
-  let first = null;
-  return (node, editItem, i) => {
-    if (i === 0) {
-      first = node;
-      node.text = String(editItem.newText);
-      node.opt = 'edit';
-    } else {
-      if (typeof node.start_time === 'number' &&
-          (typeof first.start_time !== 'number' || node.start_time < first.start_time))
-        first.start_time = node.start_time;
-      if (typeof node.end_time === 'number' &&
-          (typeof first.end_time !== 'number' || node.end_time > first.end_time))
-        first.end_time = node.end_time;
-      node.opt = 'del';
-    }
-  };
-})(), 'combines');
-
-// 4. 递归重建父节点 text（由非 del 子节点拼接）
-function rebuildText(items) {
-  if (!Array.isArray(items)) return;
-  for (const node of items) {
-    if (Array.isArray(node.words) && node.words.length > 0) {
-      rebuildText(node.words);
-      node.text = node.words
-        .filter(w => w.opt !== 'del')
-        .map(w => (w.text || '').trim())
-        .join('');
-    }
-  }
-}
-
-rebuildText(opted);
+const edited = applyEditsToOpted(deepClone(opted), edits);
 
 // 5. 输出
 const outDir = path.dirname(path.resolve(optedFile));
 const outFile = path.join(outDir, 'subtitles_words_edited.json');
-fs.writeFileSync(outFile, JSON.stringify(opted, null, 2), 'utf8');
+fs.writeFileSync(outFile, JSON.stringify(edited, null, 2), 'utf8');
 console.log('✅ 已保存', outFile);
