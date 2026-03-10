@@ -37,7 +37,7 @@ pos: 前置 skill，首次使用前运行
 
 1. 注册火山引擎账号
 2. 开通语音识别服务
-3. 获取 App ID 和 Access Token
+3. 获取 API Key
 
 ## 安装流程
 
@@ -77,8 +77,7 @@ videocut --help
 
 ```bash
 # 设置环境变量（推荐添加到 ~/.zshrc 或 ~/.bashrc）
-export VOLCENGINE_APP_ID="your_app_id"
-export VOLCENGINE_ACCESS_TOKEN="your_access_token"
+export VOLCENGINE_ACCESS_TOKEN="your_api_key"
 ```
 
 ### 4. 验证环境
@@ -94,7 +93,6 @@ ffmpeg -version
 videocut --help
 
 # 检查环境变量
-echo $VOLCENGINE_APP_ID
 echo $VOLCENGINE_ACCESS_TOKEN
 ```
 
@@ -117,12 +115,4 @@ FFmpeg 命令需加 `file:` 前缀：
 
 ```bash
 ffmpeg -i "file:2026:01:26 task.mp4" ...
-```
-
-### Q4: CLI 安装失败
-
-确保 Node.js 版本 >= 18：
-
-```bash
-node -v  # 应该 >= 18.0.0
 ```

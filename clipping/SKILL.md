@@ -9,7 +9,7 @@ output: subtitles_words.json、auto_selected.json
 pos: 转录+识别，到用户网页审核为止
 -->
 
-# 剪口播 v2
+# 剪口播 v3
 
 > 火山引擎转录 + AI 口误识别 + 网页审核
 
@@ -20,6 +20,16 @@ pos: 转录+识别，到用户网页审核为止
 用户: 处理一下这个视频
 用户: 处理 @某文件夹文件夹里的视频
 用户: 剪口播 @某文件夹
+```
+
+## 前置要求
+
+```bash
+# 安装 CLI
+npm install -g @videocut/cli
+
+# 配置火山引擎环境变量
+export VOLCENGINE_ACCESS_TOKEN="your_api_key"
 ```
 
 ## 输出目录结构
@@ -35,7 +45,7 @@ output/
   │   └── subtitles_words_edited.json  # 应用 edits 后
   ├── 2_analysis/
   │   ├── readable.txt   # 由 common 生成，供人/AI 阅读
-  │   ├── edits.json    # 删除/改字清单，由 apply_edits 写回
+  │   ├── edits.json    # 删除/改字清单，由 apply-edits 写回
   │   └── analysis.md
   └── 3_review/
       └── delete_segments.json  # 执行剪辑时保存
@@ -48,19 +58,17 @@ output/
 ```
 0. 创建输出目录
     ↓
-1. 提取音频 (ffmpeg)
+1. 转录视频 (videocut transcribe)
     ↓
-2. 上传获取公网 URL (uguu.se)
+2. 生成 opted 结构 (videocut generate-subtitles)
     ↓
-3. 火山引擎 API 转录
+3. 生成 readable，AI 分析口误，维护 edits.json
     ↓
-4. 生成 opted 结构 → common/subtitles_words.json
+4. 应用编辑 (videocut apply-edits)
     ↓
-5. 生成 readable，AI 分析口误，维护 edits.json，apply_edits → common/subtitles_words_edited.json
+5. 启动审核服务器 (videocut review-server)
     ↓
-6. 启动审核服务器（6_review_server.js），网页自动加载数据
-    ↓
-【等待用户确认】→ 网页点击「执行剪辑」或手动 /剪辑
+【等待用户确认】→ 网页点击「执行剪辑」
 ```
 
 ### 多视频批量处理
@@ -71,41 +79,39 @@ output/
 |------|------|
 | **subagent 类型** | `generalPurpose`（可执行命令 + AI 口误分析） |
 | **并行数量** | 每个视频 1 个 subagent，同时启动 |
-| **审核服务** | 所有 subagent 完成后，**只启动 1 个** `6_review_server.js`（传入 `output/` 父目录），网页以 Tab 形式展示各视频 |
+| **审核服务** | 所有 subagent 完成后，**只启动 1 个** `videocut review-server`（传入 `output/` 父目录），网页以 Tab 形式展示各视频 |
 
 **subagent 提示词要点**（需在 prompt 中写明）：
-- `VIDEO_PATH`、`SKILL_DIR`、`WORKSPACE_ROOT` 的绝对路径
-- `0_setup_output.sh` 需传入第二参数：`"$SKILL_DIR/scripts/0_setup_output.sh" "$VIDEO_PATH" "$WORKSPACE_ROOT"`
+- `VIDEO_PATH`、`WORKSPACE_ROOT` 的绝对路径
+- 步骤 0 创建输出目录
 - 若有 `video_script.md` 或用户脚本，说明视频上下文来源
-- 步骤 5.4 脚本名为 `mark_silence.js`（非 mark_sentences.js）
-- subagent 只执行步骤 0-5（转录+分析+apply_edits），**不启动审核服务器**
+- subagent 只执行步骤 0-4（转录+分析+apply-edits），**不启动审核服务器**
 
 ## 执行步骤
 
-**变量约定**：`VIDEO_PATH`=视频路径；`SKILL_DIR`=clipping 目录（本 SKILL 所在文件夹）；`BASE_DIR`=0_setup_output 返回值。在项目根执行时 `0_setup_output` 会创建 `output/`。
+**变量约定**：`VIDEO_PATH`=视频路径；`BASE_DIR`=输出目录。
 
 ### 步骤 0: 创建输出目录
 
 ```bash
-# 从项目根执行时可省略第二参数；subagent 执行时需传入 WORKSPACE_ROOT
-BASE_DIR=$("$SKILL_DIR/scripts/0_setup_output.sh" "$VIDEO_PATH" "${WORKSPACE_ROOT:-$(pwd)}")
+# 创建输出目录
+BASE_DIR="output/$(date +%Y-%m-%d)_$(basename "$VIDEO_PATH" .mp4)"
+mkdir -p "$BASE_DIR"/{1_transcribe,common,2_analysis,3_review}
 cd "$BASE_DIR"
 ```
 
 ### 步骤 1: 转录
 
 ```bash
-"$SKILL_DIR/scripts/1_transcribe.sh" "$VIDEO_PATH" "$BASE_DIR"
+videocut transcribe "$VIDEO_PATH" -o "$BASE_DIR"
 # 输出: 1_transcribe/audio.mp3, volcengine_result.json
 ```
 
 ### 步骤 2: 拆分字幕（opt + gap 插入）
 
 ```bash
-cd "$BASE_DIR/1_transcribe"
-node "$SKILL_DIR/scripts/2_generate_subtitles.js" volcengine_result.json
+videocut generate-subtitles "$BASE_DIR/1_transcribe/volcengine_result.json"
 # 输出: common/subtitles_words.json（唯一数据源）
-cd "$BASE_DIR"
 ```
 
 ### 步骤 3: 分析口误（脚本+AI）
@@ -113,14 +119,12 @@ cd "$BASE_DIR"
 #### 3.1 生成易读格式
 
 ```bash
-cd "$BASE_DIR/2_analysis"
-node "$SKILL_DIR/scripts/3_generate_readable.js" ../common/subtitles_words.json
-# 输出: readable.txt（层级 i|内容、j|字，所有下标 0-based，与 edits pathSet 一致）
+videocut generate-review "$BASE_DIR/common/subtitles_words.json" -o "$BASE_DIR/2_analysis/readable.txt"
 ```
 
 #### 3.2 读取用户习惯
 
-先读 `$SKILL_DIR/rules/` 目录下所有规则文件。
+读取 `clipping/rules/` 目录下所有规则文件。
 读取 `BASE_DIR` 下用户提供的脚本，理解视频上下文。
 
 #### 3.3 AI 分析：剔除静音/口误 + 修正字幕文案（输出 edits.json）
@@ -136,11 +140,11 @@ pathSet 有三种形态：`{ parent: i }`（整句）、`{ parent: i, children: 
 
 | # | 类型 | 判断方法 | 删除范围 |
 |---|------|----------|----------|
-| 1 | 静音段 | `blank_Xs` 行 | 整行（`{ parent: i }` 或 `{ parent: i, children: [j] }`） |
-| 2 | 重复句 | 相邻句子开头 ≥5 字相同 | 较短的**整句**（`{ parent: i }`） |
+| 1 | 静音段 | `blank_Xs` 行 | 整行 |
+| 2 | 重复句 | 相邻句子开头 ≥5 字相同 | 较短的**整句** |
 | 3 | 隔一句重复 | 中间是残句时，比对前后句 | 前句 + 残句 |
 | 4 | 残句 | 话说一半 + 静音 | **整个残句** |
-| 5 | 句内重复 | A + 中间 + A 模式 | 前面部分（`{ parent: i, children: [...] }`） |
+| 5 | 句内重复 | A + 中间 + A 模式 | 前面部分 |
 | 6 | 卡顿词 | 那个那个、就是就是 | 前面部分 |
 | 7 | 重说纠正 | 部分重复 / 否定纠正 | 前面部分 |
 | 8 | 语气词 | 嗯、啊、那个 | 标记为删除 |
@@ -172,31 +176,23 @@ pathSet 有三种形态：`{ parent: i }`（整句）、`{ parent: i, children: 
 以 **common/subtitles_words.json** 为唯一数据源。AI 或人工在 readable 上标注的「删/改」写入 `2_analysis/edits.json`，再通过脚本写回：
 
 ```bash
-# 编辑 2_analysis/edits.json（格式见下方「数据格式」），然后：
-cd "$BASE_DIR"
-node "$SKILL_DIR/scripts/3_apply_edits.js" common/subtitles_words.json 2_analysis/edits.json
+videocut apply-edits "$BASE_DIR/common/subtitles_words.json" "$BASE_DIR/2_analysis/edits.json"
 # 输出: common/subtitles_words_edited.json
 ```
 
-审核/剪辑时使用 **common/subtitles_words_edited.json**（或先运行 apply_edits 再加载）。
-
-### 步骤 6: 启动审核服务器
+### 步骤 5: 启动审核服务器
 
 ```bash
 # root_path 由 AI 决定：
 #   单视频 → 传项目目录（如 "$BASE_DIR"），网页仅显示该项目
 #   多视频 → 传 output/ 父目录，网页以 Tab 展示所有项目
-node "$SKILL_DIR/scripts/6_review_server.js" 8899 "$ROOT_PATH"
+videocut review-server 8899 --path "$ROOT_PATH"
 # 打开 http://localhost:8899
 ```
 
-- review.html 为静态模板（位于 `$SKILL_DIR/scripts/review.html`），由服务器直接提供
-- 网页通过 API 动态加载 `common/subtitles_words_edited.json`、`1_transcribe/audio.mp3`
-- 多视频时网页顶部有 Tab 栏，每个 Tab 对应一个项目，独立维护选择状态
-
 用户在网页中：
 - 切换 Tab 选择要审核的视频
-- 播放音频片段确认
+- 播放视频确认
 - 勾选/取消删除项
 - 点击「执行剪辑」
 
@@ -227,3 +223,19 @@ node "$SKILL_DIR/scripts/6_review_server.js" 8899 "$ROOT_PATH"
 - **combines**：合并同一父节点下多个子节点为一个，取时间并集，用 `newText` 替换。
 
 ---
+
+## 规则文件
+
+`clipping/rules/` 目录下包含口误识别规则：
+
+| 文件 | 说明 |
+|------|------|
+| 1-core-principles.md | 核心原则 |
+| 2-filler-words.md | 语气词规则 |
+| 3-silence-handling.md | 静音处理 |
+| 4-duplicate-sentences.md | 重复句识别 |
+| 5-stuttering.md | 卡顿词识别 |
+| 6-intra-sentence-repeat.md | 句内重复 |
+| 7-consecutive-fillers.md | 连读语气词 |
+| 8-self-correction.md | 自我纠正 |
+| 9-incomplete-sentences.md | 残句识别 |
