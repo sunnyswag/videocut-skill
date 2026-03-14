@@ -1,20 +1,14 @@
 <!--
-架构守护者：一旦此文件夹内容变化，请更新此文件
+Architecture guardian: If this folder's content changes, update this file
 -->
 
-# videocut:安装
+# videocut:setup
 
-> 环境准备 skill
+> Environment setup skill (merged into main SKILL.md)
 
-## 文件清单
+## Files
 
-| 文件 | 用途 |
-|------|------|
-| `SKILL.md` | skill 定义（安装流程） |
-| `README.md` | 本文件 |
-
-## 依赖
-
-- Python 3.8+
-- pip
-- brew (macOS) / apt (Linux)
+| File | Purpose |
+|---|---|
+| `SKILL.md` | Skill definition (redirects to main SKILL.md) |
+| `README.md` | This file |

@@ -1,190 +1,170 @@
 # Videocut Skills
 
-> 用 Claude Code Skills 构建的视频剪辑 Agent，专为口播视频设计
+> A video clipping Agent built with Cursor Skills, designed for talking-head videos
 
-## 为什么做这个？
+[中文版](README.zh.md)
 
-剪映的"智能剪口播"有两个痛点：
-1. **无法理解语义**：重复说的句子、说错后纠正的内容，它识别不出来
-2. **字幕质量差**：专业术语（Claude Code、MCP、API）经常识别错误
+## Why Build This?
 
-这个 Agent 用 Claude 的语义理解能力解决第一个问题，用自定义词典解决第二个问题。
+CapCut's "Smart Clip" has two pain points:
+1. **No semantic understanding**: It can't detect repeated sentences or self-corrections after mistakes
+2. **Poor subtitle quality**: Technical terms (Claude Code, MCP, API) are often transcribed incorrectly
 
-## 效果演示
+This Agent uses Claude's semantic understanding to solve the first problem, and custom dictionaries to solve the second.
 
-**输入**：19 分钟口播原片（各种口误、卡顿、重复）
+## Demo
 
-**输出**：
-- 自动识别 608 处问题（静音 114 + 口误/重复 494）
-- 剪辑后视频 72MB
-- 全程 AI 辅助，人工只需确认
+**Input**: 19-minute raw talking-head footage (various slips, stuttering, repetitions)
 
-## 核心功能
+**Output**:
+- Automatically identified 608 issues (114 silences + 494 slips/repetitions)
+- Post-cut video 72MB
+- Fully AI-assisted, manual effort limited to confirmation only
 
-| 功能 | 说明 | 对比剪映 |
-|------|------|----------|
-| **语义理解** | AI 逐句分析，识别重说/纠正/卡顿 | 只能模式匹配 |
-| **静音检测** | >0.3s 自动标记，可调阈值 | 固定阈值 |
-| **重复句检测** | 相邻句开头≥5字相同 → 删前保后 | 无此功能 |
-| **句内重复** | "好我们接下来好我们接下来做" → 删重复部分 | 无此功能 |
-| **词典纠错** | 自定义专业术语词典 | 无此功能 |
-| **自更新** | 记住你的偏好，越用越准 | 无此功能 |
+## Core Features
 
-## 快速开始
+| Feature | Description | vs CapCut |
+|---|---|---|
+| **Semantic understanding** | AI analyzes sentence-by-sentence, detects re-takes / corrections / stuttering | Pattern matching only |
+| **Silence detection** | Auto-mark >0.3s, adjustable threshold | Fixed threshold |
+| **Duplicate detection** | Adjacent sentences with ≥5 identical starting characters → delete earlier, keep later | Not available |
+| **Intra-sentence repeat** | "ok let's next ok let's next do" → delete repeated part | Not available |
+| **Dictionary correction** | Custom professional term dictionary | Not available |
+| **Self-evolution** | Remembers your preferences, improves over time | Not available |
 
-### 1. 安装 Skills
+## Quick Start
+
+### 1. Install Skills
 
 ```bash
-# 克隆到 skills 目录，比如 claude 的 skills 目录：
-git clone https://github.com/Ceeon/videocut-skills.git ~/.claude/skills/videocut
+# Clone to skills directory:
+git clone https://github.com/Ceeon/videocut-skills.git ~/.cursor/skills/videocut
 ```
 
-### 2. 安装环境
+### 2. Set Up Environment
 
-打开 Claude Code，输入：
+Open Cursor, type:
 
 ```
-/videocut:安装
+/videocut:clip
 ```
 
-AI 会自动：
-- 检查 Python、FFmpeg、Node.js
-- 安装火山引擎 API Key
+The AI will automatically:
+- Check Node.js and FFmpeg
+- Install the Volcengine API Key
 
-## 使用流程
+## Usage Flow
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  /videocut:安装  →  首次使用，安装环境和模型            │
+│  Prerequisites: Install Node.js, FFmpeg, @videocut/cli  │
+│  Set VOLCENGINE_API_KEY environment variable             │
 └─────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
-│  /videocut:剪口播 视频.mp4                              │
+│  /videocut:clip video.mp4                               │
 │                                                         │
-│  1. 提取音频 → 上传云端                                 │
-│  2. 火山引擎转录 → 字级别时间戳                         │
-│  3. AI 审核：静音/口误/重复/语气词                      │
-│  4. 生成审核网页 → 浏览器打开                           │
+│  1. Extract audio → upload to cloud                     │
+│  2. Volcengine transcription → word-level timestamps    │
+│  3. AI review: silence / slips / repetition / fillers   │
+│  4. Generate review web page → open in browser          │
 └─────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
-│  【人工审核 + 执行剪辑】                                │
+│  [Manual Review + Execute Cut]                          │
 │                                                         │
-│  - 单击跳转播放                                         │
-│  - 双击选中/取消                                        │
-│  - Shift 拖动多选                                       │
-│  - 确认后点击「执行剪辑」→ 自动 FFmpeg 剪辑            │
+│  - Click to jump & play                                 │
+│  - Double-click to select/deselect                      │
+│  - Shift+drag for multi-select                          │
+│  - Confirm, then click "Execute Cut" → auto FFmpeg cut  │
 └─────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
-│  /videocut:字幕                                         │
+│  /videocut:evolution  (optional)                        │
 │                                                         │
-│  - Whisper 转录                                         │
-│  - 词典纠错（Claude Code → claude code）                │
-│  - 人工确认 → 烧录字幕                                  │
-└─────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────┐
-│  /videocut:自更新  （可选）                             │
-│                                                         │
-│  告诉 AI 你的偏好，它会记住：                           │
-│  - "静音阈值改成 1 秒"                                  │
-│  - "保留适量嗯作为过渡"                                 │
+│  Tell the AI your preferences, it will remember:        │
+│  - "Change silence threshold to 1 second"               │
+│  - "Keep some 'um's as transitions"                     │
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Skill 清单
+## Skill List
 
-| Skill | 功能 | 输入 | 输出 |
-|-------|------|------|------|
-| `安装` | 环境准备 | 无 | 安装日志 |
-| `剪口播` | 转录 + AI 审核 + 剪辑 | 视频文件 | 剪辑后视频 |
-| `字幕` | 生成字幕 | 视频文件 | 带字幕视频 |
-| `自更新` | 记录偏好 | 用户反馈 | 更新规则文件 |
+| Skill | Function | Input | Output |
+|---|---|---|---|
+| `clip` | Transcribe + AI review + cut | Video file | Clipped video |
+| `evolution` | Record preferences | User feedback | Updated rule files |
 
-## 目录结构
+## Directory Structure
 
 ```
-videocut/
-├── README.md           # 本文件
-├── .env.example        # API Key 模板
-├── 安装/               # 环境安装 skill
-├── 剪口播/             # 核心：转录 + AI 审核 + 剪辑
-│   ├── SKILL.md        # 流程说明
-│   ├── *.js            # 脚本（生成字幕、审核页面、服务器）
-│   ├── *.sh            # 脚本（转录、剪辑）
-│   └── 用户习惯/       # 审核规则（可自定义）
-│       ├── 1-核心原则.md       # 删前保后
-│       ├── 2-语气词检测.md     # 嗯啊呃
-│       ├── 3-静音段处理.md     # >0.3s 删除
-│       ├── 4-重复句检测.md     # 相邻句开头相同
-│       ├── 5-卡顿词.md         # 那个那个、就是就是
-│       ├── 6-句内重复检测.md   # A+中间+A 模式
-│       ├── 7-连续语气词.md     # 嗯啊、啊呃
-│       └── 8-重说纠正.md       # 部分重复、否定纠正
-├── 字幕/               # 字幕生成与烧录
-│   └── 词典.txt        # 自定义词典
-└── 自更新/             # 自我进化机制
+videocut-skills/
+├── README.md              # This file
+├── README.zh.md           # Chinese version
+├── SKILL.md               # Main skill: transcribe + AI review + cut
+├── edits.example.json     # Example edits format
+├── rules/                 # Slip detection rules (customizable)
+│   ├── 1-core-principles.md
+│   ├── 2-filler-words.md
+│   ├── 3-silence-handling.md
+│   ├── 4-duplicate-sentences.md
+│   ├── 5-stuttering.md
+│   ├── 6-intra-sentence-repeat.md
+│   ├── 7-consecutive-fillers.md
+│   ├── 8-self-correction.md
+│   └── 9-incomplete-sentences.md
+├── setup/                 # Setup skill (legacy, merged into SKILL.md)
+└── .env.example           # API Key template
 ```
 
-## 技术架构
+## Architecture
 
 ```
 ┌──────────────────┐     ┌──────────────────┐
-│   火山引擎 ASR   │────▶│  字级别时间戳    │
-│  （云端转录）    │     │  subtitles.json  │
+│  Volcengine ASR  │────▶│  Word-level      │
+│  (cloud transcr) │     │  timestamps      │
 └──────────────────┘     └────────┬─────────┘
                                   │
                                   ▼
 ┌──────────────────┐     ┌──────────────────┐
-│   AI Agent       │────▶│   AI 审核结果    │
-│  （语义分析）    │     │  edits.json   │
+│   AI Agent       │────▶│   AI review      │
+│  (semantic)      │     │   edits.json     │
 └──────────────────┘     └────────┬─────────┘
                                   │
                                   ▼
 ┌──────────────────┐     ┌──────────────────┐
-│   审核网页       │────▶│   最终删除列表   │
-│  （人工确认）    │     │  delete_segments │
+│   Review Web UI  │────▶│  Final deletions │
+│  (manual confirm)│     │  delete_segments │
 └──────────────────┘     └────────┬─────────┘
                                   │
                                   ▼
 ┌──────────────────┐     ┌──────────────────┐
-│     FFmpeg       │────▶│   剪辑后视频     │
-│  filter_complex  │     │   xxx_cut.mp4    │
+│     FFmpeg       │────▶│  Clipped video   │
+│  filter_complex  │     │  xxx_cut.mp4     │
 └──────────────────┘     └──────────────────┘
 ```
 
-## 依赖
+## Dependencies
 
-| 依赖 | 用途 | 安装方式 |
-|------|------|----------|
-| Node.js 18+ | 运行脚本 | `brew install node` |
-| FFmpeg | 音视频处理 | `brew install ffmpeg` |
-| Python 3.8+ | 模型运行 | 系统自带 |
-| 火山引擎 API | 语音转录 | [申请 Key](https://console.volcengine.com/speech/new/setting/apikeys) |
+| Dependency | Purpose | Install |
+|---|---|---|
+| Node.js 18+ | Run scripts | `brew install node` |
+| FFmpeg | Audio/video processing | `brew install ffmpeg` |
+| Volcengine API | Speech transcription | [Get Key](https://console.volcengine.com/speech/new/setting/apikeys) |
 
-## 常见问题
+## FAQ
 
-### Q: 火山引擎转录超时？
+### Q: Volcengine transcription timeout?
 
-上传音频到 uguu.se（脚本默认），不要用 catbox.moe（火山引擎访问慢）。
+Upload audio to uguu.se (script default). Avoid catbox.moe (slow access from Volcengine).
 
-### Q: 审核网页打不开？
+### Q: Review web page won't open?
 
-检查端口 8899 是否被占用：`lsof -i :8899`
+Check if port 8899 is in use: `lsof -i :8899`
 
-### Q: 剪辑后音画不同步？
+### Q: Audio-video out of sync after cutting?
 
-使用 `filter_complex + trim` 而非 `concat demuxer`，脚本已处理。
-
-### Q: 如何添加自定义词典？
-
-编辑 `subtitle/dictionary.txt`，每行一个词：
-```
-Claude Code
-MCP
-API
-```
+Use `filter_complex + trim` instead of `concat demuxer`. The script handles this automatically.
 
 ## License
 

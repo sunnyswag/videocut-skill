@@ -1,115 +1,114 @@
 ---
-name: videocut:自进化
-description: 自进化 skills。记录用户反馈，更新方法论和规则。触发词：更新规则、记录反馈、改进skill
+name: videocut:evolution
+description: Self-evolving skills. Record user feedback, update methodology and rules. Triggers: update rules, record feedback, improve skill
 ---
 
 <!--
-input: 用户反馈、错误纠正
-output: 更新后的文档（CLAUDE.md 或 tips/*.md）
-pos: 元 skill，让 Agent 从错误中学习
-
+input: User feedback, error corrections
+output: Updated documentation (CLAUDE.md or tips/*.md)
+pos: Meta skill, lets the Agent learn from mistakes
 -->
 
-# 自更新
+# Self-Evolution
 
-> 让 Agent 从错误中学习，持续改进
+> Let the Agent learn from mistakes and continuously improve
 
-## 快速使用
-
-```
-用户: 记录一下刚才的问题
-用户: 更新口误识别的规则
-用户: 这个教训要记下来
-```
-
-## 更新位置
-
-| 内容类型 | 目标文件 | 示例 |
-|---------|---------|------|
-| 用户画像 | `CLAUDE.md` | 偏好、习惯 |
-| 方法论 + 反馈 | `*/tips/*.md` | 规则、教训 |
-| 规则文件 | `clipping/rules/*.md` | 口误识别规则 |
-
-## 流程
+## Quick Usage
 
 ```
-用户触发（"刚才失败了"、"记录一下"）
-    ↓
-【自动】回溯上下文，找出问题点
-    ↓
-【自动】读目标文件全文，理解现有结构
-    ↓
-【自动】整合到正文相应位置（不是只往末尾加！）
-    ↓
-【自动】反馈记录只记事件，不重复规则
-    ↓
-汇报更新结果
+User: Record the issue from just now
+User: Update the slip detection rules
+User: This lesson should be noted
 ```
 
-**关键**：不要问"什么问题"，直接从上下文分析！
+## Update Targets
 
-## 更新原则
+| Content Type | Target File | Example |
+|---|---|---|
+| User profile | `CLAUDE.md` | Preferences, habits |
+| Methodology + feedback | `*/tips/*.md` | Rules, lessons |
+| Rule files | `rules/*.md` | Slip detection rules |
 
-### ❌ 错误做法：往末尾加
+## Workflow
+
+```
+User triggers ("that just failed", "note this down")
+    ↓
+[Auto] Trace back context, identify the issue
+    ↓
+[Auto] Read the full target file, understand existing structure
+    ↓
+[Auto] Integrate into the relevant section (NOT just appending to the end!)
+    ↓
+[Auto] Feedback log records only events, does not duplicate rules
+    ↓
+Report update results
+```
+
+**Key**: Don't ask "what was the problem" — analyze from context directly!
+
+## Update Principles
+
+### ❌ Wrong: Append to the End
 
 ```markdown
-## 反馈记录
+## Feedback Log
 ### 2026-01-14
-- 教训：审查稿末尾必须生成删除任务清单
-- 教训：用户确认时要分别确认口误和静音
+- Lesson: Review must include deletion task list at the end
+- Lesson: User confirmation should separately confirm slips and silences
 ```
 
-只加到反馈记录 = 规则散落在末尾，下次还会犯错
+Only adding to the feedback log = rules scattered at the end, same mistakes will recur
 
-### ✅ 正确做法：整合到正文
+### ✅ Correct: Integrate into the Body
 
-1. **读全文**，理解章节结构
-2. **找到相应位置**，把规则整合进去
-3. **反馈记录只记事件**：`- 审查稿标记了静音，但剪辑时漏删`
+1. **Read the full file**, understand the section structure
+2. **Find the relevant position**, integrate the rule
+3. **Feedback log records only events**: `- Review marked silences but they were missed during cut`
 
 ```markdown
-## 四、审查稿格式
-（新增删除任务清单模板）
+## Section 4: Review Format
+(Added deletion task list template)
 
-## 五、确认与执行流程  ← 缺这个章节就新增
-（新增分别确认口误和静音的流程）
+## Section 5: Confirmation & Execution Flow  ← Add this section if missing
+(Added separate confirmation flow for slips and silences)
 
-## 反馈记录
+## Feedback Log
 ### 2026-01-14
-- 审查稿标记了静音，但剪辑时漏删（只删了口误）
+- Review marked silences but they were missed during cut (only slips were deleted)
 ```
 
-## 触发条件
+## Trigger Conditions
 
-- 用户纠正 AI 错误
-- 用户说"记住这个"、"以后注意"
-- 发现新的通用规律
+- User corrects an AI error
+- User says "remember this", "watch out for this in the future"
+- A new general pattern is discovered
 
-## 反例
+## Anti-Patterns
 
 ### 2026-01-13
 ```
-❌ 错误：
-用户: 刚才失败了，更新到skills
-AI: 请告诉我你发现了什么问题？  ← 不该问！
+❌ Wrong:
+User: The last attempt failed, update the skills
+AI: What problem did you find?  ← Should not ask!
 
-✅ 正确：
-AI: [自动回溯上下文，找到失败点]
-AI: [执行更新]
+✅ Correct:
+AI: [Auto-traces context, finds failure point]
+AI: [Executes update]
 ```
 
 ### 2026-01-14
 ```
-❌ 错误：
-AI: 已更新，在反馈记录新增3条教训  ← 只加末尾！
+❌ Wrong:
+AI: Updated. Added 3 lessons to feedback log  ← Only appended to end!
 
-✅ 正确：
-AI: [读全文，理解结构]
-AI: [整合到正文相应位置]
-AI: [反馈记录只记事件]
+✅ Correct:
+AI: [Reads full file, understands structure]
+AI: [Integrates into relevant section]
+AI: [Feedback log records only events]
 ```
 
-## 相关文件
+## Related Files
 
-- `clipping/rules/` - 口误识别规则目录
-- `clipping/SKILL.md` - 剪口播流程定义
+- `rules/` — Slip detection rule directory
+- `SKILL.md` — Main clipping workflow definition
