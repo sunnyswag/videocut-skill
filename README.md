@@ -1,4 +1,4 @@
-# Videocut Skills
+# Videocut Skill
 
 > A video clipping Agent built with Cursor Skills, designed for talking-head videos
 
@@ -151,20 +151,6 @@ videocut-skills/
 | Node.js 18+ | Run scripts | `brew install node` |
 | FFmpeg | Audio/video processing | `brew install ffmpeg` |
 | Volcengine API | Speech transcription | [Get Key](https://console.volcengine.com/speech/new/setting/apikeys) |
-
-## FAQ
-
-### Q: Volcengine transcription timeout?
-
-Upload audio to uguu.se (script default). Avoid catbox.moe (slow access from Volcengine).
-
-### Q: Review web page won't open?
-
-Check if port 8899 is in use: `lsof -i :8899`
-
-### Q: Audio-video out of sync after cutting?
-
-Use `filter_complex + trim` instead of `concat demuxer`. The script handles this automatically.
 
 ## License
 
