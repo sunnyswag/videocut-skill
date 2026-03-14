@@ -29,7 +29,7 @@ pos: 转录+识别，到用户网页审核为止
 npm install -g @videocut/cli
 
 # 配置火山引擎环境变量
-export VOLCENGINE_ACCESS_TOKEN="your_api_key"
+export VOLCENGINE_API_KEY="your_api_key"
 ```
 
 ## 输出目录结构
@@ -97,7 +97,9 @@ output/
 # 创建输出目录
 BASE_DIR="output/$(date +%Y-%m-%d)_$(basename "$VIDEO_PATH" .mp4)"
 mkdir -p "$BASE_DIR"/{1_transcribe,common,2_analysis,3_review}
-cd "$BASE_DIR"
+
+# 将视频链接到输出目录的父目录（供审核服务器定位视频）
+ln -sf "$(cd "$(dirname "$VIDEO_PATH")" && pwd)/$(basename "$VIDEO_PATH")" "$(dirname "$BASE_DIR")/"
 ```
 
 ### 步骤 1: 转录
@@ -119,7 +121,7 @@ videocut generate-subtitles "$BASE_DIR/1_transcribe/volcengine_result.json"
 #### 3.1 生成易读格式
 
 ```bash
-videocut generate-review "$BASE_DIR/common/subtitles_words.json" -o "$BASE_DIR/2_analysis/readable.txt"
+videocut generate-readable "$BASE_DIR/common/subtitles_words.json" -o "$BASE_DIR/2_analysis/readable.txt"
 ```
 
 #### 3.2 读取用户习惯
@@ -133,7 +135,7 @@ AI 读取 readable.txt，结合视频上下文（用户脚本/口述内容），
 1. **剔除**：把静音段（blank）和口误片段标记为删除。
 2. **修正**：根据视频实际内容纠正 ASR 转录错字（如专有名词、同音错字）。
 
-产出写入 `2_analysis/edits.json`，格式和协议内容参考 `$SKILL_DIR/scripts/edits.example.json`。
+产出写入 `2_analysis/edits.json`，格式参考 `$SKILL_DIR/clipping/edits.example.json`。
 pathSet 有三种形态：`{ parent: i }`（整句）、`{ parent: i, children: [j] }`（单个子节点）、`{ parent: i, children: [j, k] }`（多个子节点），所有下标 0-based。deletes 可以是整句或子节点级别，textChanges 和 combines 只能是子节点级别。
 
 **剔除规则（deletes，按优先级）**：
