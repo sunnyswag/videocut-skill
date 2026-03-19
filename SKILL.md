@@ -30,6 +30,31 @@ User: Clip @some-folder
 | FFmpeg | Video cutting | `brew install ffmpeg` |
 | @huiqinghuang/videocut-cli | Video clipping tool | `npm install -g @huiqinghuang/videocut-cli` |
 
+### Required Input: Hotword List (Must Provide Before Processing)
+
+Before running transcription, the user should provide a domain hotword list (product names, proper nouns, technical terms, abbreviations, English identifiers).
+Without a hotword list, ASR and later correction quality may degrade significantly.
+
+Recommended file: `hotwords.txt` (one term per line), for example:
+
+```txt
+container_of
+offsetof
+list_entry
+#define
+#undef
+X-Macro
+##__VA_ARGS__
+libuv
+GitHub
+Gist
+```
+
+Hotword list is used in two stages:
+
+1. **Volcengine ASR stage**: as custom vocabulary / hotwords to improve first-pass recognition.
+2. **LLM analysis stage**: as keyword normalization dictionary to correct near-homophone or split-token ASR outputs.
+
 ### Volcengine ASR API
 
 Console: https://console.volcengine.com/speech/new/experience/asr?projectName=default
@@ -119,7 +144,7 @@ When the user specifies a **folder** or **multiple videos**, use `mcp_task` to l
 
 ## Execution Steps
 
-**Variable conventions**: `VIDEO_PATH` = video path; `BASE_DIR` = output directory.
+**Variable conventions**: `VIDEO_PATH` = video path; `BASE_DIR` = output directory; `HOTWORDS_FILE` = hotword list file path (recommended: `"$BASE_DIR/hotwords.txt"`).
 
 ### Step 0: Create Output Directory
 
@@ -134,9 +159,11 @@ ln -sf "$(cd "$(dirname "$VIDEO_PATH")" && pwd)/$(basename "$VIDEO_PATH")" "$(di
 ### Step 1: Transcribe
 
 ```bash
-videocut transcribe "$VIDEO_PATH" -o "$BASE_DIR"
+videocut transcribe "$VIDEO_PATH" -o "$BASE_DIR" --hotwords "$HOTWORDS_FILE"
 # Output: 1_transcribe/audio.mp3, volcengine_result.json
 ```
+
+`HOTWORDS_FILE` should be prepared before transcription and passed to Volcengine ASR as hotword vocabulary.
 
 ### Step 2: Split Subtitles (opt + gap insertion)
 
@@ -157,12 +184,30 @@ videocut generate-readable "$BASE_DIR/common/subtitles_words.json" -o "$BASE_DIR
 
 Read all rule files under the `rules/` directory.
 Read any user-provided script under `BASE_DIR` to understand video context.
+Read user-provided hotword list `$HOTWORDS_FILE` before analysis.
+
+#### 3.2.1 Language-Aware Rule Selection (zh / en)
+
+Each file under `rules/` contains both `## zh` and `## en` sections.
+Before analysis, detect the dominant language of the current video and only apply the matching section:
+
+1. **Detect language from transcript + script context**
+   - Chinese dominant (contains mostly Chinese text, common fillers like `嗯/呃/啊`) → use `## zh`
+   - English dominant (contains mostly English words/sentences) → use `## en`
+2. **Load only one language section per run**
+   - Do not mix `zh` and `en` rules in the same first-pass analysis
+3. **Fallback**
+   - If language is ambiguous, default to `## zh` for Chinese creator workflows, then refine in web review
+
+This prevents missing obvious Chinese filler-word deletions caused by applying only English-language rule wording.
 
 #### 3.3 AI Analysis: Remove Silences/Slips + Correct Subtitle Text (output edits.json)
 
 The AI reads readable.txt, combined with video context (user script / narration content), and does two things:
 1. **Remove**: Mark silence segments (blank) and slip segments for deletion.
 2. **Correct**: Fix ASR transcription errors based on actual video content (e.g., proper nouns, homophones).
+
+If hotwords are provided, prioritize hotword-aligned corrections before generic text cleanup.
 
 Output is written to `2_analysis/edits.json`. Format reference: `$SKILL_DIR/edits.example.json`.
 

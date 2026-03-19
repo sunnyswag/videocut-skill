@@ -7,6 +7,38 @@ Architecture guardian: If modified, please also update:
 1. This folder's README.md
 -->
 
+## zh
+
+# 卡顿词
+
+## 模式
+
+同一个词连续说 2-3 次：
+
+```javascript
+const stutterPatterns = [
+  '那个那个',
+  '就是就是',
+  '然后然后',
+  '这个这个',
+  '所以所以'
+];
+```
+
+## 删除策略
+
+删前面，保留最后一个。
+
+```
+原文: "那个那个我想说"
+删除: "那个"
+保留: "那个我想说"
+```
+
+---
+
+## en
+
 # Stuttering
 
 ## Pattern
