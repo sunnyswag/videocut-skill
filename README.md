@@ -4,6 +4,12 @@
 
 [中文版](README.zh.md)
 
+## Acknowledgements
+
+This project is inspired by and references the implementation of [Ceeon/videocut-skills](https://github.com/Ceeon/videocut-skills). Thanks to the original author for the pioneering work on AI-powered video clipping with Claude Code Skills.
+
+The CLI tool used by this skill is [sunnyswag/videocut](https://github.com/sunnyswag/videocut) (`@huiqinghuang/videocut-cli`).
+
 ## Why Build This?
 
 CapCut's "Smart Clip" has two pain points:
@@ -151,6 +157,11 @@ videocut-skills/
 | Node.js 18+ | Run scripts | `brew install node` |
 | FFmpeg | Audio/video processing | `brew install ffmpeg` |
 | Volcengine API | Speech transcription | [Get Key](https://console.volcengine.com/speech/new/setting/apikeys) |
+
+## Related Projects
+
+- **CLI & Web Review UI**: [sunnyswag/videocut](https://github.com/sunnyswag/videocut) — the `@huiqinghuang/videocut-cli` package that powers transcription, edit application, review server, and FFmpeg cutting.
+- **Original reference**: [Ceeon/videocut-skills](https://github.com/Ceeon/videocut-skills) — the Claude Code Skills implementation this project builds upon.
 
 ## License
 

@@ -1,6 +1,12 @@
-# Videocut Skills
+# Videocut Skill
 
-> 用 Claude Code Skills 构建的视频剪辑 Agent，专为口播视频设计
+> 用 Cursor Skills 构建的视频剪辑 Agent，专为口播视频设计
+
+## 致谢
+
+本项目参考了 [Ceeon/videocut-skills](https://github.com/Ceeon/videocut-skills) 的实现，感谢原作者在 AI 视频剪辑 Skills 方面的开创性工作。
+
+本 skill 使用的 CLI 工具为 [sunnyswag/videocut](https://github.com/sunnyswag/videocut)（`@huiqinghuang/videocut-cli`）。
 
 ## 为什么做这个？
 
@@ -185,6 +191,11 @@ Claude Code
 MCP
 API
 ```
+
+## 相关项目
+
+- **CLI 与 Web Review UI**：[sunnyswag/videocut](https://github.com/sunnyswag/videocut) — `@huiqinghuang/videocut-cli` 工具包，负责转录、编辑应用、审阅服务器和 FFmpeg 剪辑。
+- **原始参考**：[Ceeon/videocut-skills](https://github.com/Ceeon/videocut-skills) — 本项目所参考的 Claude Code Skills 实现。
 
 ## License
 

@@ -218,12 +218,12 @@ pathSet has three forms: `{ parent: i }` (whole utterance), `{ parent: i, childr
 | # | Type | Detection Method | Deletion Scope |
 |---|---|---|---|
 | 1 | Silence | `blank_Xs` lines | Entire line |
-| 2 | Duplicate sentence | Adjacent sentences share ≥5 initial characters | The shorter **whole sentence** |
+| 2 | Duplicate sentence | Adjacent sentences convey the same meaning (ignore filler prefixes like "就是/那个/然后") | The shorter or earlier **whole sentence** |
 | 3 | Skip-one duplicate | When middle is a fragment, compare before/after | Previous sentence + fragment |
-| 4 | Fragment | Sentence cut off mid-way + silence | **Entire fragment** |
+| 4 | Fragment | Sentence ends mid-word or mid-phrase (e.g. "任" without "务"), or is an abandoned start followed by a complete restatement | **Entire fragment** |
 | 5 | Intra-sentence repeat | A + middle + A pattern | The earlier part |
 | 6 | Stuttering | "that that", "so so" | The earlier part |
-| 7 | Self-correction | Partial repeat / negation correction | The earlier part |
+| 7 | Self-correction | Speaker starts vaguely then restates clearly | The earlier part |
 | 8 | Filler words | um, uh, ah | Mark for deletion |
 
 **Correction rules (textChanges)**:
