@@ -240,13 +240,10 @@ pathSet has three forms: `{ parent: i }` (whole utterance), `{ parent: i, childr
 
 **Segmented analysis (loop execution)**:
 
-```
-1. Read readable.txt offset=N limit=100 (each segment ~100 lines, including sentence and word lines)
-2. Analyze these 100 lines: mark paths to delete, text to correct
-3. Append deletes and textChanges to edits.json
+1. Read readable.txt 
+2. Analyze these lines: mark paths to delete, text to correct
+3. Append deletes, combines and textChanges to edits.json
 4. Log analysis process to analysis.md
-5. N += 100, return to step 1
-```
 
 #### 3.6 Maintain edits.json and Write Back to JSON
 

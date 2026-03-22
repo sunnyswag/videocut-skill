@@ -13,7 +13,7 @@ Personal preferences referenced during AI review.
 | 1-core-principles.md | Principle | Delete earlier, keep later |
 | 2-filler-words.md | Preference | um, uh, ah + deletion boundaries |
 | 3-silence-handling.md | Threshold | ≤0.5s ignore, 0.5–1s optional, >1s suggest delete |
-| 4-duplicate-sentences.md | Preference | Adjacent sentences with ≥5 identical starting chars, delete shorter |
+| 4-duplicate-sentences.md | Preference | Semantic compare adjacent sentences (strip filler prefixes), delete shorter/earlier |
 | 5-stuttering.md | Preference | "that that", "so so" patterns |
 | 6-intra-sentence-repeat.md | Preference | A + middle + A pattern |
 | 7-consecutive-fillers.md | Preference | um-uh, ah-um |
@@ -24,7 +24,7 @@ Personal preferences referenced during AI review.
 
 1. **Silence >1s** → suggest delete (split by 1-second grid)
 2. **Incomplete sentence** → delete (cut off mid-way + silence)
-3. **Duplicate sentence** → delete shorter (≥5 identical starting chars)
+3. **Duplicate sentence** → delete shorter/earlier (semantic compare, strip filler prefixes)
 4. **Intra-sentence repeat** → delete A + middle (A + middle + A pattern)
 5. **Stuttering** → delete earlier ("that that", "so so")
 6. **Self-correction** → delete earlier (partial repeat, negation correction, word interrupted)
