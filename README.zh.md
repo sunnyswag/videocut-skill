@@ -19,6 +19,18 @@
 - 剪辑后视频 72MB
 - 全程 AI 辅助，人工只需确认
 
+**AI 处理过程**：
+
+![AI 执行日志](https://github.com/sunnyswag/videocut/blob/main/assets/executing_log.jpg?raw=true)
+
+**审核网页界面**：
+
+![审核编辑演示](https://github.com/sunnyswag/videocut/blob/main/assets/edit_demo.png?raw=true)
+
+**导出剪辑结果**：
+
+![导出演示](https://github.com/sunnyswag/videocut/blob/main/assets/export_demo.png?raw=true)
+
 ## 核心功能
 
 | 功能 | 说明 | 对比剪映 |

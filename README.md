@@ -21,6 +21,18 @@ This Agent uses LLM semantic understanding to solve the first problem, and custo
 - Post-cut video 72MB
 - Fully AI-assisted, manual effort limited to confirmation only
 
+**AI Processing**:
+
+![AI Executing Log](https://github.com/sunnyswag/videocut/blob/main/assets/executing_log.jpg?raw=true)
+
+**Review Web UI**:
+
+![Edit Review Demo](https://github.com/sunnyswag/videocut/blob/main/assets/edit_demo.png?raw=true)
+
+**Export Process Demo**:
+
+![Export Demo](https://github.com/sunnyswag/videocut/blob/main/assets/export_demo.png?raw=true)
+
 ## Core Features
 
 | Feature | Description | vs CapCut |
