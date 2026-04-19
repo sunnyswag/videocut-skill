@@ -1,13 +1,59 @@
 {
+  "schema_version": 2,
   "deletes": [
-    { "pathSet": { "parent": 0 }, "reason": "silence" },
-    { "pathSet": { "parent": 1, "children": [2, 3] }, "reason": "repetition", "reasonDetail": "相邻句子开头 ≥5 字相同" },
-    { "pathSet": { "parent": 2, "children": [3] }, "reason": "repetition", "reasonDetail": "相邻句子开头 ≥5 字相同" }
+    {
+      "type": "cue",
+      "cueIdx": 1,
+      "reason": "filler_word: 单独一句 '嗯'"
+    },
+    {
+      "type": "cue",
+      "cueIdx": 12,
+      "cueIdxEnd": 14,
+      "reason": "duplicate_run: cue 15 把同一意思表达得更清楚"
+    },
+    {
+      "type": "cue",
+      "cueIdx": 22,
+      "reason": "self_correction: 说话者在 cue 23 重述"
+    },
+    {
+      "type": "range",
+      "start": 152.4,
+      "end": 155.1,
+      "reason": "long_silence 2.7s (signals.silences[6])"
+    },
+    {
+      "type": "range",
+      "start": 310.6,
+      "end": 312.1,
+      "reason": "mid-cue pause: cue 48 中间 1.5s 沉默，字幕会按保留词重拼"
+    },
+    {
+      "type": "words",
+      "cueIdx": 34,
+      "pattern": "呃",
+      "reason": "mid-cue filler: 第 1 次出现的 '呃'"
+    },
+    {
+      "type": "words",
+      "cueIdx": 89,
+      "pattern": "就是",
+      "occurrence": 2,
+      "reason": "mid-cue filler: 第 2 次出现的 '就是'"
+    }
   ],
-  "textChanges": [
-    { "pathSet": { "parent": 2, "children": [1] }, "newText": "C", "oldText": "c" }
+  "textEdits": [
+    {
+      "cueIdx": 23,
+      "newText": "macro 是一种宏观视角",
+      "reason": "asr_error: 'red' 应为 'macro'，结合视频脚本上下文"
+    },
+    {
+      "cueIdx": 41,
+      "newText": "把它推到 GitHub 上",
+      "reason": "asr_error: 'get up' 应为 'GitHub'（热词）"
+    }
   ],
-  "combines": [
-    { "pathSet": { "parent": 16, "children": [5, 6] }, "newText": "GitHub", "oldText": "get up", "reason": "asr_error", "reasonDetail": "ASR 拆词错误" }
-  ]
+  "notes": "deletes 里包含 range（cue 内部停顿）和 words（句中填充词）；textEdits 仅做 cue 级整行替换，不要做词级替换。"
 }

@@ -1,315 +1,207 @@
 ---
 name: videocut:clip
-description: Talking-head video transcription and slip-of-tongue detection. Generates review transcript and deletion task list. Triggers: clip video, process video, detect slips
+description: 本地 faster-whisper 转录 + AI 粗剪 + ffmpeg 输出。触发词：剪辑视频、处理视频、粗剪
 ---
 
-<!--
-input: Video file (*.mp4) or folder containing multiple videos
-output: subtitles_words.json, auto_selected.json
-pos: Transcription + detection, up to user web review
--->
+# 口播视频粗剪
 
-# Clip Talking-Head Video
+> 本地 faster-whisper ASR（零费用） + AI 分析静音/口误/重复 + ffmpeg 剪辑。
+> 输出 **edited.mp4** 和 **edited.srt**，用户后续在剪映 / Premiere 等做精修。
 
-> Volcengine transcription + AI slip detection + web review
-
-## Quick Usage
+## 快速使用
 
 ```
-User: Clip this talking-head video
-User: Process this video
-User: Process videos in @some-folder
-User: Clip @some-folder
+User: 剪辑这个视频
+User: 处理 @video.mp4
+User: 剪辑 @some-folder   （批量）
 ```
 
-## Prerequisites
+## 前置依赖
 
-| Dependency | Purpose | Install Command |
+| 依赖 | 用途 | 安装 |
 |---|---|---|
-| Node.js | Run CLI | `brew install node` |
-| FFmpeg | Video cutting | `brew install ffmpeg` |
-| @huiqinghuang/videocut-cli | Video clipping tool | `npm install -g @huiqinghuang/videocut-cli` |
+| Node 18+ | 运行 CLI | 系统包管理器 |
+| FFmpeg / ffprobe | 剪辑、信号分析 | 系统包管理器 |
+| Python 3.10+ | 运行 faster-whisper | 系统包管理器 |
+| @huiqinghuang/videocut-cli | CLI | `npm i -g @huiqinghuang/videocut-cli` |
+| faster-whisper | 本地 ASR | 在 venv 里 `pip install faster-whisper`（首次下载模型 ~1.5GB） |
 
-### Required Input: Hotword List (Must Provide Before Processing)
-
-Before running transcription, the user should provide a domain hotword list (product names, proper nouns, technical terms, abbreviations, English identifiers).
-Without a hotword list, ASR and later correction quality may degrade significantly.
-
-Recommended file: `hotwords.txt` (one term per line), for example:
-
-```txt
-container_of
-offsetof
-list_entry
-#define
-#undef
-X-Macro
-##__VA_ARGS__
-libuv
-GitHub
-Gist
-```
-
-Hotword list is used in two stages:
-
-1. **Volcengine ASR stage**: as custom vocabulary / hotwords to improve first-pass recognition.
-2. **LLM analysis stage**: as keyword normalization dictionary to correct near-homophone or split-token ASR outputs.
-
-### Volcengine ASR API
-
-Console: https://console.volcengine.com/speech/new/experience/asr?projectName=default
-
-1. Register a Volcengine account
-2. Enable the speech recognition service
-3. Obtain an API Key
-
-### Install & Verify
+Python 依赖**必须装在 venv 里**（现代 Debian/Ubuntu 的 PEP 668 会拒绝 pip 装到系统 Python）：
 
 ```bash
-# macOS
-brew install node ffmpeg
-
-# Install CLI
-npm install -g @huiqinghuang/videocut-cli
-
-# Set environment variable (recommended: add to ~/.zshrc or ~/.bashrc)
-export VOLCENGINE_API_KEY="your_api_key"
-
-# Verify
-node -v && ffmpeg -version && videocut --help && echo $VOLCENGINE_API_KEY
+python3 -m venv .venv
+.venv/bin/pip install faster-whisper
+export VIDEOCUT_PYTHON="$PWD/.venv/bin/python"   # CLI 会读这个环境变量
 ```
 
-### Troubleshooting
-
-| Problem | Solution |
-|---|---|
-| Where to get the API Key? | Volcengine Console → Speech Technology → Speech Recognition → API Key |
-| `ffmpeg` command not found | `which ffmpeg` should output a path. If not: `brew install ffmpeg` |
-| Filename contains colons | Add `file:` prefix: `ffmpeg -i "file:2026:01:26 task.mp4" ...` |
-
-## Output Directory Structure
-
-```
-output/
-└── YYYY-MM-DD_video/
-  ├── 1_transcribe/
-  │   ├── audio.mp3
-  │   └── volcengine_result.json
-  ├── common/
-  │   ├── subtitles_words.json        # Single source of truth (opt + gap)
-  │   └── subtitles_words_edited.json # After applying edits
-  ├── 2_analysis/
-  │   ├── readable.txt   # Generated from common, for human/AI reading
-  │   ├── edits.json     # Delete/edit list, written back by apply-edits
-  │   └── analysis.md
-  └── 3_review/
-      └── delete_segments.json  # Saved when cut is executed
-```
-
-**Rule**: Reuse existing folders; create new ones otherwise.
-
-## Workflow
-
-```
-0. Create output directory
-    ↓
-1. Transcribe video (videocut transcribe)
-    ↓
-2. Generate opted structure (videocut generate-subtitles)
-    ↓
-3. Generate readable, AI analyzes slips, maintain edits.json
-    ↓
-4. Apply edits (videocut apply-edits)
-    ↓
-5. Start review server (videocut review-server)
-    ↓
-[Wait for user confirmation] → Click "Execute Cut" in the web UI
-```
-
-### Batch Processing (Multiple Videos)
-
-When the user specifies a **folder** or **multiple videos**, use `mcp_task` to launch parallel subagents:
-
-| Option | Description |
-|---|---|
-| **Subagent type** | `generalPurpose` (can execute commands + AI slip analysis) |
-| **Parallelism** | 1 subagent per video, launched simultaneously |
-| **Review server** | After all subagents complete, start **only 1** `videocut review-server` (pass the `output/` parent directory); the web UI shows each video as a Tab |
-
-**Subagent prompt essentials** (must be specified in the prompt):
-- Absolute paths for `VIDEO_PATH` and `WORKSPACE_ROOT`
-- Step 0: create output directory
-- If a `video_script.md` or user script exists, describe the video context source
-- Subagent only executes steps 0–4 (transcribe + analyze + apply-edits), **does not start the review server**
-
-## Execution Steps
-
-**Variable conventions**: `VIDEO_PATH` = video path; `BASE_DIR` = output directory; `HOTWORDS_FILE` = hotword list file path (recommended: `"$BASE_DIR/hotwords.txt"`).
-
-### Step 0: Create Output Directory
+可选 GPU（约 10× 速度，没装会自动回退 CPU+int8）：
 
 ```bash
-BASE_DIR="output/$(date +%Y-%m-%d)_$(basename "$VIDEO_PATH" .mp4)"
-mkdir -p "$BASE_DIR"/{1_transcribe,common,2_analysis,3_review}
-
-# Symlink video to the output parent directory (for review-server to locate)
-ln -sf "$(cd "$(dirname "$VIDEO_PATH")" && pwd)/$(basename "$VIDEO_PATH")" "$(dirname "$BASE_DIR")/"
+.venv/bin/pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 ```
 
-### Step 1: Transcribe
+验证：`node -v && ffmpeg -version && videocut --help && "$VIDEOCUT_PYTHON" -c "from faster_whisper import WhisperModel"`
+
+## 流程（3 步）
+
+```
+1. videocut process <video> -o <BASE_DIR>
+   → inputs/source.mp4 (symlink) + work/transcript.srt + work/signals.json
+2. videocut suggest-edits <BASE_DIR>
+   → work/edits.candidates.json （机械扫出 gap / mid-cue / filler-only）
+3. [LLM 分析] 读 work/transcript.srt + signals.json + candidates
+              (+ 可选 inputs/video_script.md, work/hotwords.txt)
+   → 写 work/edits.json + work/analysis.md（基于 candidates 再加 stutter 合并 + textEdits）
+4. videocut cut inputs/source.mp4 work/edits.json
+   → final/edited.mp4 + final/edited.srt
+```
+
+## 输出目录结构
+
+```
+output/YYYY-MM-DD_<name>/
+├── inputs/                       # 用户放（source 由 CLI 软链，script 由用户手动放）
+│   ├── source.mp4                # 软链接到源文件，CLI 自动建
+│   └── video_script.md           # 可选，用户提供（讲稿，用于 textEdits 判断）
+├── work/                         # LLM 读/写，CLI 内部工作区
+│   ├── hotwords.txt              # 可选，skill 产出（从 script 提取的热词）
+│   ├── transcript.srt            # CLI 产出，LLM 读
+│   ├── signals.json              # CLI 产出，LLM 读（只含 duration + silences）
+│   ├── transcript.words.json     # CLI 产出，LLM **不读**（cut 内部做词边界吸附）
+│   ├── edits.candidates.json   # suggest-edits 产出，LLM 读作骨架
+│   ├── edits.json              # LLM 写
+│   └── analysis.md               # LLM 写
+└── final/                        # 成片
+    ├── edited.mp4
+    └── edited.srt
+```
+
+## 执行步骤（单视频）
+
+**变量**：`VIDEO_PATH` 源视频路径；`BASE_DIR="output/$(date +%Y-%m-%d)_$(basename "$VIDEO_PATH" .mp4)"`
+
+### 步骤 1：转录 + 信号分析
 
 ```bash
-videocut transcribe "$VIDEO_PATH" -o "$BASE_DIR" --hotwords "$HOTWORDS_FILE"
-# Output: 1_transcribe/audio.mp3, volcengine_result.json
+videocut process "$VIDEO_PATH" -o "$BASE_DIR" \
+  ${HOTWORDS_FILE:+--hotwords "$HOTWORDS_FILE"}
+# 若用户提供了讲稿，手动放到 inputs/：
+cp "$VIDEO_SCRIPT_MD" "$BASE_DIR/inputs/video_script.md"
 ```
 
-`HOTWORDS_FILE` should be prepared before transcription and passed to Volcengine ASR as hotword vocabulary.
+CLI 会自动建出 `inputs/ work/ final/` 三个目录，源视频软链到 `inputs/source.<ext>`，转录和信号产出到 `work/`。首次运行会下载模型 (~1.5GB)。
 
-### Step 2: Split Subtitles (opt + gap insertion)
+### 步骤 2：候选扫描（机械）
 
 ```bash
-videocut generate-subtitles "$BASE_DIR/1_transcribe/volcengine_result.json"
-# Output: common/subtitles_words.json (single source of truth)
+videocut suggest-edits "$BASE_DIR"
+# 产出 $BASE_DIR/work/edits.candidates.json
+# 三类候选：cue 间 gap（>=1.8s）/ mid-cue 停顿（>=1.3s）/ filler-only cue
+# 阈值可改：--gap-min / --mid-cue-min
 ```
 
-### Step 3: Analyze Slips (script + AI)
+候选只是骨架，LLM 不要直接拿来当 edits.json 用；stutter / false-start / asr hallucination 片段 / textEdits **必须靠 LLM 再过一遍**。
 
-#### 3.1 Generate Readable Format
+### 步骤 3：AI 分析 → edits.json
 
-```bash
-videocut generate-readable "$BASE_DIR/common/subtitles_words.json" -o "$BASE_DIR/2_analysis/readable.txt"
-```
+**读取**：
+- `$BASE_DIR/work/transcript.srt`（必读，完整读取）
+- `$BASE_DIR/work/signals.json`（必读，只含 `duration` + `silences`）
+- `$BASE_DIR/work/edits.candidates.json`（suggest-edits 产出，作为起点）
+- `$BASE_DIR/inputs/video_script.md`（若存在，作为语义上下文）
+- `$BASE_DIR/work/hotwords.txt`（若存在，用于判断领域术语；skill 可从 script 提取）
 
-#### 3.2 Read User Preferences
+**启发式**（优先级从高到低）：
 
-Read all rule files under the `rules/` directory.
-Read any user-provided script under `BASE_DIR` to understand video context.
-Read user-provided hotword list `$HOTWORDS_FILE` before analysis.
-
-#### 3.2.1 Language-Aware Rule Selection (zh / en)
-
-Each file under `rules/` contains both `## zh` and `## en` sections.
-Before analysis, detect the dominant language of the current video and only apply the matching section:
-
-1. **Detect language from transcript + script context**
-   - Chinese dominant (contains mostly Chinese text, common fillers like `嗯/呃/啊`) → use `## zh`
-   - English dominant (contains mostly English words/sentences) → use `## en`
-2. **Load only one language section per run**
-   - Do not mix `zh` and `en` rules in the same first-pass analysis
-3. **Fallback**
-   - If language is ambiguous, default to `## zh` for Chinese creator workflows, then refine in web review
-
-This prevents missing obvious Chinese filler-word deletions caused by applying only English-language rule wording.
-
-#### 3.3 AI Analysis: Remove Silences/Slips + Correct Subtitle Text (output edits.json)
-
-The AI reads readable.txt, combined with video context (user script / narration content), and does two things:
-1. **Remove**: Mark silence segments (blank) and slip segments for deletion.
-2. **Correct**: Fix ASR transcription errors based on actual video content (e.g., proper nouns, homophones).
-
-If hotwords are provided, prioritize hotword-aligned corrections before generic text cleanup.
-
-Output is written to `2_analysis/edits.json`. Format reference: `$SKILL_DIR/edits.example.json`.
-
-pathSet has three forms: `{ parent: i }` (whole utterance), `{ parent: i, children: [j] }` (single child node), `{ parent: i, children: [j, k] }` (multiple child nodes). All indices are 0-based. deletes can be at utterance or child-node level; textChanges and combines are child-node level only.
-
-**Deletion rules (deletes, by priority)**:
-
-| # | Type | Detection Method | Deletion Scope |
+| # | 类型 | 触发 | 动作 |
 |---|---|---|---|
-| 1 | Silence | `blank_Xs` lines | Entire line |
-| 2 | Duplicate sentence | Adjacent sentences convey the same meaning (ignore filler prefixes like "就是/那个/然后") | The shorter or earlier **whole sentence** |
-| 3 | Skip-one duplicate | When middle is a fragment, compare before/after | Previous sentence + fragment |
-| 4 | Fragment | Sentence ends mid-word or mid-phrase (e.g. "任" without "务"), or is an abandoned start followed by a complete restatement | **Entire fragment** |
-| 5 | Intra-sentence repeat | A + middle + A pattern | The earlier part |
-| 6 | Stuttering | "that that", "so so" | The earlier part |
-| 7 | Self-correction | Speaker starts vaguely then restates clearly | The earlier part |
-| 8 | Filler words | um, uh, ah | Mark for deletion |
+| 1 | 长静音（cue 间） | `signals.silences` duration > 2s 不跨句 | `type:"range"` 覆盖静音区间 |
+| 2 | cue 内停顿 | `signals.silences` 落在某 cue 时间段内且 > 1s | `type:"range"` 切该停顿（字幕会按保留词重拼） |
+| 3 | 独立填充词 cue | 整 cue 只包含填充词 | `type:"cue"` 删该 cue |
+| 4 | 句中填充词 | cue 文本里夹着填充词且其他部分是实义内容 | `type:"words"` 精准删该词（见下） |
+| 5 | 口吃 | "那个那个" / "就是就是" / "I I I" 两次连续相同 | 删**较早**的 cue |
+| 6 | 自我纠正 | 说话者先含糊后重述清楚 | 删**较早**的 cue（片段） |
+| 7 | 相邻重复句 | 两条相邻 cue 表达同一语义 | 删**较早**的 cue |
+| 8 | 未完成片段 | cue 在词中间断开 + 紧接一条完整重述 | 删片段 cue |
 
-**Correction rules (textChanges)**:
+**填充词清单**（判断"只包含填充词"或"夹着填充词"时对照）：
+`嗯` / `呃` / `啊` / `哦` / `um` / `uh` / `一个` / `一些` / `就是` / `然后` / `那个` / `比如说` / `其实` / `对吧`。
+权威清单在 `videocut-cli/src/core/fillers.ts` 的 `FILLER_WORDS`（suggest-edits 和这里都用同一份）。可按讲者个人习惯微调——若某词对讲者是实义用法（比如讲 "然后 X 就触发了"），就别删。
 
-| Scenario | Example | Operation |
-|---|---|---|
-| ASR homophone error | "红" → "宏" | `{ "pathSet": { "parent": 2, "children": [16] }, "newText": "宏", "oldText": "红" }` |
-| Proper noun | "get up" → "GitHub" | combines to merge corresponding child nodes |
-| Extra spaces/punctuation | "a a i" → "AI" | combines to merge or textChanges to correct |
+**ASR 文本修正（textEdits）**：
 
-**Core principles**:
-- **Delete whole sentences**: For fragments and duplicates, delete the entire sentence (`{ parent: i }`), not just a few words
-- **Context-based correction**: Use user-provided video scripts or narration to determine correct wording
+LLM 还需要在 `edits.json` 的 `textEdits` 字段里产出 **cue 级整行文本替换**，用来纠正 ASR 的识别错误。触发场景：
 
-**Segmented analysis (loop execution)**:
+- 专名识错：`get up` → `GitHub`、`MC P` → `MCP`、`call code` → `Claude Code`
+- 同音字错误：`红` → `宏`、`站` → `债`
+- 数字 / 术语：`a i` → `AI`、`c 加加` → `C++`
 
-1. Read readable.txt 
-2. Analyze these lines: mark paths to delete, text to correct
-3. Append deletes, combines and textChanges to edits.json
-4. Log analysis process to analysis.md
+**判断依据**：优先参考 `video_script.md`（讲稿）和 `hotwords.txt`（热词）。若 LLM 不确定（没有上下文支撑），**不要改**——保留原文不会坏事，乱改会导致字幕错得更离谱。
 
-#### 3.6 Maintain edits.json and Write Back to JSON
+**粒度**：一次只替换一整条 cue 的 text；不做词级替换（那是旧 pathSet 流程的遗产，已废弃）。时间戳不动。
 
-Using **common/subtitles_words.json** as the single source of truth. AI or manual annotations on readable as "delete/edit" are written to `2_analysis/edits.json`, then applied back via script:
+**核心原则**：
+- **能删整 cue 就删整 cue**。不要拆到 cue 内部的单词级。
+- **textEdits 保守使用**。拿不准就不改；哪怕漏掉几个错字，也比瞎改更好。
 
-```bash
-videocut apply-edits "$BASE_DIR/common/subtitles_words.json" "$BASE_DIR/2_analysis/edits.json"
-# Output: common/subtitles_words_edited.json
-```
-
-### Step 5: Start Review Server
-
-```bash
-# root_path is determined by the AI:
-#   Single video → pass project directory (e.g., "$BASE_DIR"), web shows only that project
-#   Multiple videos → pass output/ parent directory, web shows all projects as Tabs
-videocut review-server 8899 --path "$ROOT_PATH"
-# Open http://localhost:8899
-```
-
-The user in the web UI can:
-- Switch Tabs to select which video to review
-- Play video to confirm
-- Check/uncheck deletion items
-- Click "Execute Cut"
-
----
-
-## Data Formats
-
-### edits.json (2_analysis)
+**输出**：写入 `$BASE_DIR/work/edits.json`，格式见 `edits.example.json`：
 
 ```json
 {
+  "schema_version": 2,
   "deletes": [
-    { "pathSet": { "parent": 0 }, "reason": "silence" },
-    { "pathSet": { "parent": 1, "children": [2, 3] }, "reason": "repetition" }
+    {"type": "cue", "cueIdx": 1, "reason": "filler_word: 嗯"},
+    {"type": "cue", "cueIdx": 12, "cueIdxEnd": 14, "reason": "duplicate_run: cue 15 更清晰"},
+    {"type": "range", "start": 152.40, "end": 155.10, "reason": "long_silence 2.7s"}
   ],
-  "textChanges": [
-    { "pathSet": { "parent": 2, "children": [1] }, "newText": "C", "oldText": "c" }
+  "textEdits": [
+    {"cueIdx": 23, "newText": "macro 是一种宏观视角", "reason": "asr_error: 'red' → 'macro'"},
+    {"cueIdx": 41, "newText": "把它推到 GitHub 上", "reason": "asr_error: 'get up' → 'GitHub'"}
   ],
-  "combines": [
-    { "pathSet": { "parent": 16, "children": [5, 6] }, "newText": "GitHub", "oldText": "get up", "reason": "asr_error" }
-  ]
+  "notes": "其余 ASR 文本未修改（无足够上下文）"
 }
 ```
 
-- **pathSet**: All indices are 0-based. `{ parent: i }` = utterances[i] (whole sentence); `{ parent: i, children: [j, k] }` = single/multiple child nodes.
-- **deletes**: Mark for deletion; after apply, the corresponding node's `opt` is set to `"del"`.
-- **textChanges**: Correct text by overwriting a node's `text`.
-- **combines**: Merge multiple child nodes under the same parent into one, using the time union, replacing with `newText`.
+寻址规则：
+- `type:"cue"` + 仅 `cueIdx`：删该 cue（`cueIdx` 是 SRT 中的 1 基序号）
+- `type:"cue"` + `cueIdxEnd`：删 `cueIdx..cueIdxEnd` 闭区间
+- `type:"range"`：按绝对秒删（可切 cue 间静音，也可切 cue 内部停顿；切 cue 内部时 CLI 会按保留的词重建字幕行）
+- `type:"words"`：**句中填充词首选**。`{cueIdx, pattern}` → CLI 在该 cue 的词级时间戳里找匹配，剪掉那段时间。支持 `occurrence` 指定第 N 次出现（默认 1）。
+  ```json
+  {"type": "words", "cueIdx": 12, "pattern": "呃", "reason": "filler_word mid-cue"}
+  {"type": "words", "cueIdx": 34, "pattern": "就是", "occurrence": 2, "reason": "第二次出现"}
+  ```
+  匹配用 `String.includes(pattern)` 对比每一条 whisper word 的 text——pattern 要和 word 的切分粒度一致才能命中（Whisper 对中文通常是"词 2-3 字一组"的粒度）。命不中会直接 exit 1，自己看 CLI 报错。
+- `textEdits[].cueIdx` + `newText`：用 newText 替换整条 cue 的文本（时间戳不变）
 
----
+同时把推理过程写入 `$BASE_DIR/work/analysis.md`（哪几条 cue 为什么删、textEdits 的上下文证据、ASR 疑似错误但没足够信心修的列表）。
 
-## Rule Files
+### 步骤 4：剪辑
 
-The `rules/` directory contains slip detection rules:
+```bash
+videocut cut "$BASE_DIR/inputs/source.mp4" "$BASE_DIR/work/edits.json"
+# 默认输出到 $BASE_DIR/final/edited.mp4 和 edited.srt
+```
 
-| File | Description |
-|---|---|
-| 1-core-principles.md | Core principles |
-| 2-filler-words.md | Filler word rules |
-| 3-silence-handling.md | Silence handling |
-| 4-duplicate-sentences.md | Duplicate sentence detection |
-| 5-stuttering.md | Stuttering detection |
-| 6-intra-sentence-repeat.md | Intra-sentence repeat detection |
-| 7-consecutive-fillers.md | Consecutive filler words |
-| 8-self-correction.md | Self-correction detection |
-| 9-incomplete-sentences.md | Incomplete sentence detection |
+CLI 会：
+1. 校验每条 `cueIdx` 是否越界（越界则打印并 exit 1）
+2. **应用 textEdits 改 cue.text**（时间戳不变）
+3. 按 `transcript.words.json` 做 ±150ms 词边界吸附
+4. 复用 50ms buffer + 30ms 音频 crossfade
+5. 自动选择硬件编码器（NVENC / VAAPI / QSV / VideoToolbox / libx264）
+6. 重映射 SRT 时间轴 → 写 `edited.srt`（已带 textEdits 的修正文本）
+
+## 批量模式（多个视频）
+
+当用户给文件夹 / 多个视频时：
+
+1. glob 所有 `*.mp4`（或 `.mov/.mkv`）
+2. 为每个视频启动一个 **Task subagent**（使用 `subagent_prompt.md` 模板，并替换 `VIDEO_PATH` 等变量）
+3. 所有 subagent 并行
+4. 汇总它们返回的 JSON（`base_dir`、`original_duration`、`new_duration`、`edits_count`）给用户
+
+注意：每个 subagent 处理独立的 `BASE_DIR`，互不干扰。
+
+## 迁移说明
+
+旧版（< 2.0）使用火山引擎 + `subtitles_words.json` + `edits.json` (pathSet) 的工作流已废弃。`output/` 下的旧项目**不兼容**新 CLI，需要对源视频重跑 `videocut process`。
