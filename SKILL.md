@@ -110,11 +110,25 @@ python3 -m venv .venv
 export VIDEOCUT_PYTHON="$PWD/.venv/bin/python"   # CLI 会读这个环境变量
 ```
 
-可选 GPU（约 10× 速度，没装会自动回退 CPU+int8）：
+可选 GPU（没装会自动回退 CPU+int8，只是慢，不会报错）：
 
 ```bash
 .venv/bin/pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 ```
+
+装完即可，**不用配 `LD_LIBRARY_PATH`**——这两个包把 `.so` 装在 `site-packages/nvidia/*/lib` 下，不在动态链接器的搜索路径里，`whisper_transcribe.py` 会在加载模型前用绝对路径把它们预加载一遍（`preload_nvidia_libs()`）。
+
+`compute_type` 交给 `auto`，脚本按 `ctranslate2.get_supported_compute_types("cuda")` 的实际支持情况挑，**不要硬写 `float16`**：
+
+| 卡 | 选中的类型 | 相对 CPU int8 的实测加速 |
+|---|---|---|
+| Ampere / Ada 及以后（sm_80+） | `float16` | 大幅提升 |
+| Turing / Volta（sm_70~75） | `float16` | 大幅提升 |
+| **Pascal（sm_6x，如 GTX 10 系）** | `int8_float32` | **约 2×**（实测 GTX 1060：60s 音频 30.4s → 14.5s，含约 5s 模型加载） |
+
+Pascal 的 fp16 吞吐只有 fp32 的一个零头，ctranslate2 会直接把 `float16` 从支持列表里剔掉，硬指定会加载失败。老卡上 GPU 仍然值得开，但别指望一个数量级。
+
+确认真的走了 GPU，看这行日志：`[whisper] load model=... device=cuda compute_type=...`；回退时会明确打印 `CUDA 运行时缺失，回退 CPU+int8`。
 
 验证：`node -v && ffmpeg -version && videocut --help && "$VIDEOCUT_PYTHON" -c "from faster_whisper import WhisperModel"`
 
@@ -181,6 +195,39 @@ cp "$PLAN_PATH" "$BASE_DIR/inputs/video_script.md"
 
 CLI 会自动建出 `inputs/ work/ final/` 三个目录，源视频软链到 `inputs/source.<ext>`，转录和信号产出到 `work/`。首次运行会下载模型 (~1.5GB)。
 
+#### 必做：核一遍静音阈值
+
+`analyze-signals` 的默认阈值是 `-30dB`，**对偏轻的录音会失效**——阈值一旦高于人声平均电平，ffmpeg 会把大段说话判成静音，照着切会把内容剪没。这个错误不会报错，只会安静地毁片。
+
+每条新素材先量电平，再拿词级时间戳验证：
+
+```bash
+# 1) 人声有多响
+ffmpeg -hide_banner -nostats -i "$VIDEO_PATH" -af volumedetect -f null - 2>&1 | grep mean_volume
+
+# 2) 「静音」区间里压着多少语音（比例越低越好）
+python3 - "$BASE_DIR" <<'EOF'
+import json, sys
+w = f"{sys.argv[1]}/work"
+sig = json.load(open(f"{w}/signals.json"))
+words = sorted((x["start"], x["end"]) for u in json.load(open(f"{w}/transcript.words.json"))["utterances"] for x in u["words"])
+def covered(s, e):
+    return sum(min(e, we) - max(s, ws) for ws, we in words if we > s and ws < e)
+tot = sum(x["end"] - x["start"] for x in sig["silences"])
+cov = sum(covered(x["start"], x["end"]) for x in sig["silences"])
+print(f"静音 {tot:.1f}s，其中人声 {cov:.1f}s（{cov/max(tot,1e-9)*100:.1f}%）")
+EOF
+```
+
+**人声占比 >35% 就说明阈值不对**，按 `mean_volume` 往下调 7~10dB 重算，直到降到 25% 上下（剩下的是 whisper 词级时间戳自带的 padding，正常）：
+
+```bash
+videocut analyze-signals "$BASE_DIR/inputs/source.mp4" -o "$BASE_DIR/work/signals.json" --silence-noise-db -50
+videocut suggest-edits "$BASE_DIR"     # 信号变了，候选必须重扫
+```
+
+实测参考：一条 `mean_volume=-38.7dB`、语音段 `-43.2dB` 的录屏，默认 -30dB 下 **50.5% 的「静音」其实是人声**，mid-cue 候选 10 条里 9 条是幻觉；换 -50dB 后降到 21.9%。
+
 ### 步骤 2：候选扫描（机械）
 
 ```bash
@@ -191,6 +238,17 @@ videocut suggest-edits "$BASE_DIR"
 ```
 
 候选只是骨架，LLM 不要直接拿来当 edits.json 用；stutter / false-start / asr hallucination 片段 / textEdits **必须靠 LLM 再过一遍**。
+
+**最危险的一类是自我纠正**——机械扫描只认得出那个纠正词（`不` / `啊不对` / `我说错了`）是填充词，认不出它前面那句讲错了。只删纠正词，等于把错话留在成片里：
+
+```
+348  你可能先sleep了一段时间
+349  你这个时候就是非阻塞了     ← 讲错了，机械候选没标
+350  不                        ← 机械候选只标了这条
+351  你就是阻塞了               ← 正确的说法
+```
+
+只按候选删 350 → 成片变成「非阻塞了 / 你就是阻塞了」，自相矛盾且知识点是错的。正确做法是连 **349 一起删**。凡是候选里出现单字 `不` / `不是` / `不对`，都要回头看**前一条是不是说错了**。
 
 ### 步骤 3：AI 分析 → edits.json
 
