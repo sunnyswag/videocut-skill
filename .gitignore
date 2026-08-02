@@ -1,1 +1,4 @@
 .env
+
+# 本机私有配置（路径因机器而异），模板见 videocut.config.example.json
+videocut.config.json

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "_note": "在本 skill 目录内拷贝一份、改名为 videocut.config.json，按本机情况修改。skill 目录的 .gitignore 已排除它，不会被提交。WSL 下 Windows 盘写成 /mnt/c、/mnt/d 形式。",
+
+  "paths": {
+    "_note": "四个路径都建议写绝对路径；workRoot 若写相对路径则相对当前工作目录。workRoot 必须在 Linux 原生盘上，不要放 /mnt/*。",
+    "videoDir": "/mnt/c/Users/<你>/Videos",
+    "planDir": "/mnt/c/Users/<你>/Documents/notes",
+    "workRoot": "/home/<你>/videocut-work",
+    "deliverRoot": "/mnt/d/videocut"
+  },
+
+  "deliver": {
+    "_note": "final-only：工作区留在 WSL 原生文件系统（drvfs 慢），只把成片拷到 deliverRoot/<name>/。改成 full 则整个项目目录都建在 deliverRoot 下。",
+    "layout": "final-only",
+    "files": ["final/edited.mp4", "final/edited.srt"]
+  },
+
+  "current": {
+    "_note": "开新视频时改这三行即可；也可以在对话里直接指定视频/讲稿覆盖它。plan 会被拷成 inputs/video_script.md。",
+    "name": "YYYY-MM-DD_项目名",
+    "video": "录屏文件名.mp4",
+    "plan": "子目录/讲稿或制作方案.md"
+  }
+}

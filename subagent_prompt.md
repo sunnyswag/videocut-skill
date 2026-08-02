@@ -6,10 +6,11 @@
 
 你正在处理批量任务里的一个视频。
 
-**输入变量**：
+**输入变量**（由 orchestrator 从 `videocut.config.json` 解析后填入，子 agent 不再自己读配置）：
 ```
 VIDEO_PATH     = {{VIDEO_PATH}}        # 源视频绝对路径
-WORKSPACE_ROOT = {{WORKSPACE_ROOT}}    # 工作区根目录绝对路径
+BASE_DIR       = {{BASE_DIR}}          # 本视频的工作区绝对路径
+DELIVER_DIR    = {{DELIVER_DIR}}       # 成片交付目录绝对路径，或空字符串
 HOTWORDS_FILE  = {{HOTWORDS_FILE}}     # 热词文件绝对路径，或空字符串
 SCRIPT_FILE    = {{SCRIPT_FILE}}       # video_script.md 绝对路径，或空字符串
 ```
@@ -18,7 +19,6 @@ SCRIPT_FILE    = {{SCRIPT_FILE}}       # video_script.md 绝对路径，或空�
 
 1. 运行转录 + 信号分析（CLI 会自动创建 `inputs/ work/ final/` 三目录并把 source 软链到 inputs/）：
    ```bash
-   BASE_DIR="$WORKSPACE_ROOT/output/$(date +%Y-%m-%d)_$(basename "$VIDEO_PATH" .mp4)"
    videocut process "$VIDEO_PATH" -o "$BASE_DIR" \
      ${HOTWORDS_FILE:+--hotwords "$HOTWORDS_FILE"}
    # 若提供了讲稿，手动放到 inputs/：
@@ -41,11 +41,18 @@ SCRIPT_FILE    = {{SCRIPT_FILE}}       # video_script.md 绝对路径，或空�
    videocut cut "$BASE_DIR/inputs/source.mp4" "$BASE_DIR/work/edits.json"
    ```
 
-6. 返回结构化 JSON（**必须是合法 JSON**，orchestrator 会聚合）：
+6. 交付（`DELIVER_DIR` 非空时）：
+   ```bash
+   mkdir -p "$DELIVER_DIR"
+   cp "$BASE_DIR"/final/edited.mp4 "$BASE_DIR"/final/edited.srt "$DELIVER_DIR"/
+   ```
+
+7. 返回结构化 JSON（**必须是合法 JSON**，orchestrator 会聚合）：
    ```json
    {
      "video": "<basename>",
      "base_dir": "<BASE_DIR>",
+     "deliver_dir": "<DELIVER_DIR 或 null>",
      "original_duration": <sec>,
      "new_duration": <sec>,
      "edits_count": <n>
