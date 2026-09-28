@@ -4,7 +4,7 @@
 
 ## 五步流程
 
-0. 读本目录的 `videocut.config.json` → 源视频 / 讲稿 / 工作区 / 交付目录
+0. 读取或自动生成 `videocut.config.json` → 源视频 / 讲稿 / 工作区 / 交付目录
 1. `videocut process <video> -o <dir>` → transcript.srt + signals.json
 2. `videocut suggest-edits <dir>` → work/edits.candidates.json（机械骨架，可选）
 3. AI 读 transcript.srt + signals.json + candidates → 输出 `edits.json`（deletes + textEdits）
@@ -22,11 +22,18 @@ ln -sfn ../../.agents/skills/videocut .claude/skills/videocut
 
 ## 配置
 
-**本目录**放一份 `videocut.config.json`（源视频 / 讲稿 / 工作区 / 交付目录），模板见 [videocut.config.example.json](./videocut.config.example.json)。
+`videocut.config.json` 是 skill 的内部持久化文件，**不需要手动编辑**。直接用自然语言操作：
 
-放这儿而不是宿主项目根，是因为正常安装下只有本目录属于 videocut——用户 clone 这个仓库进自己的 `.agents/skills/`，CLI 走 npm 全局装，宿主项目根未必是个 git 仓库、也不该被本 skill 占位。skill 在 SKILL.md 里按固定顺序探测出本目录的绝对路径。
+- `配置剪辑：视频在 ...，讲稿在 ...，工作区在 ...，成片放 ...`
+- `查看剪辑配置`
+- `把成片目录改成 D:\videocut`
+- `剪辑最近的视频`
 
-**这个文件不进版本库**——本仓库的 `.gitignore` 已排除它。缺失时 skill 会问齐路径后自动生成，不用手动拷。
+首次使用时，skill 会一次问齐缺少的目录并自动生成配置；选中新视频时会自动更新 `current`。可以直接提供其他位置的 `.json` / `.json.md` 配置；未指定时会先查找当前项目目录，再回退到 skill 目录下的 `videocut.config.json`。相对路径一律相对配置文件所在目录解析。
+
+Windows、Linux 和 WSL 路径都可接受，skill 会在调用 CLI 前转换。`current.plan` 既可以是具体讲稿，也可以是项目目录；目录中有 `视频脚本.md` 时优先使用它。
+
+高级用户可参考 [videocut.config.example.json](./videocut.config.example.json)。实际配置含本机路径，不应提交；本仓库的 `.gitignore` 已排除默认文件名。
 
 ## 示例
 

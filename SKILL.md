@@ -15,82 +15,70 @@ User: 开始剪辑            （不带参数 → 走 videocut.config.json 的 c
 User: 剪辑这个视频
 User: 处理 @video.mp4
 User: 剪辑 @some-folder   （批量）
+User: 配置剪辑：视频在 …，讲稿在 …，成片放 …
+User: 查看剪辑配置
 ```
 
-## 项目配置（videocut.config.json）
+## 配置（由 skill 自动维护）
 
-**开工第一步**：读 `$SKILL_DIR/videocut.config.json`（`$SKILL_DIR` = 本 SKILL.md 所在目录，解析方式见下）。存在就读它，把源视频、讲稿、输出位置全部从配置解析出来，**不要再反问用户路径**。
+`videocut.config.json` 是内部持久化文件，不是要求用户手动编辑的界面。用户可以直接说“配置剪辑”、“查看剪辑配置”、“把成片目录改成 …”或“剪辑最近的视频”。**不要让用户自己复制模板或修改 JSON。**
 
-**怎么定位 `$SKILL_DIR`**：优先用你读到本文件时拿到的那个路径。拿不到就探测（第一个命中的即是，`.agents` 排在前面以拿到真实目录而非软链）：
+### 定位配置
+
+1. 用户在对话里给了配置文件路径时，它就是 `CONFIG_PATH`；接受 `.json` 和内容为纯 JSON 的 `.json.md`。
+2. 否则查找当前项目目录下的 `videocut.config.json` 或 `videocut.config.json.md`。
+3. 仍未找到时，使用 `$SKILL_DIR/videocut.config.json`。
+4. `CONFIG_DIR` 是 `CONFIG_PATH` 的父目录，配置里的所有相对路径都相对它解析，**不相对当前 shell 目录**。
+
+`$SKILL_DIR` 优先用读取本 SKILL.md 时已知的路径。拿不到时再探测（`.agents` 排在前面以拿到真实目录而非软链）：
 
 ```bash
 SKILL_DIR=$(ls -d "$PWD"/.agents/skills/videocut "$PWD"/.claude/skills/videocut \
                   "$HOME"/.claude/skills/videocut 2>/dev/null | head -1)
 ```
 
-注意 `${CLAUDE_SKILL_DIR}` 这个占位符在本文件正文里**不会被展开**（实测 Claude Code 2.1.220 返回字面量），别指望它。
+`${CLAUDE_SKILL_DIR}` 在 SKILL.md 正文里可能只是字面量，不要依赖它。默认配置被本 skill 的 `.gitignore` 排除，因为其中包含本机私有路径。
 
-配置放在 skill 目录内、而不是用户项目根，因为**正常安装下只有这个目录属于 videocut**——用户通常只 clone 这个 skill 仓库进自己的 `.agents/skills/`，CLI 走 npm 全局装，宿主项目根是别人的地盘、也未必是个 git 仓库。skill 目录是唯一能可靠定位的锚点。
+### 自然语言配置流程
 
-这个文件**不进版本库**（本 skill 的 `.gitignore` 已排除，里面是本机私有路径；模板见同目录 `videocut.config.example.json`）。所以在新机器上它多半不存在——**由本 skill 负责生成**，见下面「配置不存在时」。
+- **首次使用**：先从用户已给的视频、讲稿和当前工作区推断。仍缺信息时，用一个问题一次问齐 `videoDir`、`planDir`、`workRoot`、`deliverRoot`，然后自动校验并写入 `CONFIG_PATH`。
+- **局部修改**：用户只改一项时，保留其余字段，验证新路径后回写，再用一句话汇报改动。
+- **查看配置**：用可读列表摘要四个目录和当前项目；除非用户要求，不要倾倒原始 JSON。
+- **新视频**：对话里的 video / plan / name 覆盖配置。路径验证成功后，在开始转录前自动回写 `current`，下次就可以只说“开始剪辑”。
+- **未指定视频**：`current.video` 也为空时，列出 `videoDir` 下最近修改的几个视频让用户挑，不自行猜测。
+- **旧配置损坏**：先保留一份 `.bak`，再在不改变已能识别字段语义的前提下修复；无法可靠修复时才问用户。
 
-```jsonc
-{
-  "version": 1,
-  "paths": {
-    "videoDir":    "/mnt/c/Users/<你>/Videos",       // 录屏落盘目录
-    "planDir":     "/mnt/c/Users/<你>/Documents/notes", // 讲稿 / 制作方案根目录
-    "workRoot":    "/home/<你>/videocut-work",       // 工作区，必须在 Linux 原生盘
-    "deliverRoot": "/mnt/d/videocut"                 // 成片交付根目录
-  },
-  "deliver": { "layout": "final-only", "files": ["final/edited.mp4", "final/edited.srt"] },
-  "current": { "name": "...", "video": "xxx.mp4", "plan": "子目录/方案.md" }
-}
-```
+### 字段与路径规则
 
-**字段解析规则**：
+| 字段 | 解析 |
+|---|---|
+| `paths.videoDir` | 视频根目录；相对路径相对 `CONFIG_DIR` |
+| `paths.planDir` | 讲稿根目录；相对路径相对 `CONFIG_DIR` |
+| `paths.workRoot` | 中间产物根目录；`BASE_DIR = workRoot / current.name` |
+| `paths.deliverRoot` | 成片根目录；`DELIVER_DIR = deliverRoot / current.name` |
+| `current.video` | 绝对路径直接用，否则相对 `videoDir` |
+| `current.plan` | 可以是文件或目录；绝对路径直接用，否则相对 `planDir` |
+| `current.name` | 作为工作区和交付目录的子目录名 |
 
-| 字段 | 含义 | 解析 |
-|---|---|---|
-| `current.video` | 源视频 | 相对 `paths.videoDir`；已是绝对路径则直接用 |
-| `current.plan` | 讲稿 / 制作方案 | 相对 `paths.planDir`；拷进 `inputs/video_script.md` |
-| `current.name` | 项目名 | 用作 `BASE_DIR` 和交付目录的目录名 |
-| `paths.workRoot` | 工作区根 | 绝对路径优先（相对则相对 cwd）；`BASE_DIR="$workRoot/$name"` |
-| `paths.deliverRoot` | 交付根 | 绝对路径，成片拷到 `$deliverRoot/$name/` |
+`current.plan` 指向目录时，按以下顺序选讲稿：
 
-**`deliver.layout`**：
-- `final-only`（默认）：`BASE_DIR` 建在 WSL 本地 `workRoot` 下，只把 `deliver.files` 列的文件拷到 `$deliverRoot/$name/`。**Windows 盘（`/mnt/*`）是 drvfs，转录和 ffmpeg 中间产物在上面跑会明显变慢，所以工作区必须留在 WSL 原生文件系统。**
-- `full`：`BASE_DIR` 直接建在 `$deliverRoot/$name/`，整个项目目录都在 Windows 盘上，跳过步骤 5 的拷贝。
+1. 精确命中 `视频脚本.md`；
+2. 只有一个文件名包含“脚本”的 Markdown 文件；
+3. 目录中只有一个 Markdown 文件；
+4. 仍有多个候选时一次列出让用户选，不要猜。
 
-**路径写法**：配置里统一用 WSL 形式（`C:\` → `/mnt/c`，`D:\` → `/mnt/d`）。用户如果口头给的是 Windows 路径，自己换算，不要把反斜杠路径塞给 CLI。
+配置可保留用户熟悉的 Windows、Linux 或 WSL 路径。先解析为绝对路径，再按 CLI 实际运行环境转换：
 
-**用户在对话里显式给了视频或讲稿时，对话里的值覆盖配置**；配置只提供缺省值。
+- CLI 在 WSL 里运行时，用 `wslpath -u` 把 Windows 路径转为 `/mnt/...`。
+- CLI 在 Windows 里运行时，保留 Windows 路径；遇到 WSL 原生路径时应改在 WSL 里执行，不猜测映射。
+- JSON 中如果使用反斜杠，必须写成 `\\`；由 skill 写入时自动正确转义。也可写 Windows 能识别的正斜杠路径，如 `D:/video_work`。
 
-### 配置不存在时（首次在一台机器上用本 skill）
+`deliver.layout` 的语义：
 
-不要默默套默认值，也不要一条条追问。按这个顺序：
+- `final-only`（默认）：中间产物留在 `workRoot`，只把 `deliver.files` 拷到 `deliverRoot/current.name/`。WSL 下建议把 `workRoot` 放在 Linux 原生文件系统以获得更好性能，但不要擅自改写用户指定的 Windows 盘路径。
+- `full`：`BASE_DIR` 直接使用 `deliverRoot/current.name/`，跳过步骤 5 的拷贝。
 
-1. **一次性问齐四个路径**（用一个问题问完，别来回聊）：
-   - 录屏落盘目录 → `paths.videoDir`
-   - 讲稿 / 制作方案目录 → `paths.planDir`
-   - 工作区目录 → `paths.workRoot`（**必须在 Linux 原生盘**，别放 `/mnt/*`；可以直接建议 `$HOME/videocut-work`）
-   - 成片交付目录 → `paths.deliverRoot`
-
-   在 WSL 里要提醒用户：Windows 路径写成 `/mnt/c/...`、`/mnt/d/...`；用户给了 `C:\...` 就自己换算。
-
-2. **以 `$SKILL_DIR/videocut.config.example.json` 为模板写出 `$SKILL_DIR/videocut.config.json`**，填入上一步的答案，`deliver.layout` 保持 `final-only`。写绝对路径，不要写相对路径。
-
-3. **校验**：`ls -d` 四个目录。`videoDir` / `planDir` 不存在就报给用户、别往下走（多半是路径打错了）；`workRoot` / `deliverRoot` 不存在是正常的，`mkdir -p` 建掉即可。
-
-4. 再填 `current`（见下），然后才进步骤 1。
-
-不需要动任何 `.gitignore`——本 skill 目录自带的 `.gitignore` 已经排除了 `videocut.config.json`。
-
-### `current` 的维护
-
-- 用户说"开始剪辑"这类不带参数的话 → 直接用 `current` 里现有的三个值。
-- 用户指名了新视频（`剪 @xxx.mp4`）→ 先按对话里的值跑，跑完**把 `current` 回写进 `$SKILL_DIR/videocut.config.json`**（这次实际用的 video / plan / name），下次就能直接"开始剪辑"。
-- `current.video` 空着、用户也没指名 → 列 `paths.videoDir` 下最近修改的几个视频让用户挑，别自己猜。
+路径校验在转换到实际运行环境后进行。`videoDir` / `planDir` 或选中的源文件不存在时停下并报出具体路径；`workRoot` / `deliverRoot` 不存在时可以自动创建。
 
 ## 前置依赖
 
@@ -135,7 +123,7 @@ Pascal 的 fp16 吞吐只有 fp32 的一个零头，ctranslate2 会直接把 `fl
 ## 流程（5 步）
 
 ```
-0. 读 $SKILL_DIR/videocut.config.json → VIDEO_PATH / PLAN_PATH / BASE_DIR / DELIVER_DIR
+0. 定位或自动生成 CONFIG_PATH → 解析 VIDEO_PATH / PLAN_PATH / BASE_DIR / DELIVER_DIR
 1. videocut process <video> -o <BASE_DIR>
    → inputs/source.mp4 (symlink) + work/transcript.srt + work/signals.json
 2. videocut suggest-edits <BASE_DIR>
@@ -151,7 +139,7 @@ Pascal 的 fp16 吞吐只有 fp32 的一个零头，ctranslate2 会直接把 `fl
 ## 输出目录结构
 
 ```
-<workRoot>/<name>/                # 工作区，在 WSL 原生文件系统上
+<workRoot>/<name>/                # 中间工作区
 ├── inputs/                       # 用户放（source 由 CLI 软链，script 由用户手动放）
 │   ├── source.mp4                # 软链接到源文件，CLI 自动建
 │   └── video_script.md           # 可选，用户提供（讲稿，用于 textEdits 判断）
@@ -167,21 +155,24 @@ Pascal 的 fp16 吞吐只有 fp32 的一个零头，ctranslate2 会直接把 `fl
     ├── edited.mp4
     └── edited.srt
 
-<deliverRoot>/<name>/             # 交付目录，Windows 盘（layout=final-only）
+<deliverRoot>/<name>/             # 交付目录（layout=final-only）
 ├── edited.mp4
 └── edited.srt
 ```
 
 ## 执行步骤（单视频）
 
-**变量**（优先从 `$SKILL_DIR/videocut.config.json` 解析，缺什么才回退到默认）：
+**变量**（先解析绝对路径，再转换为 CLI 实际运行环境的路径形式）：
 
-```bash
-VIDEO_PATH="$videoDir/$current_video"          # 无配置时：用户给的路径
-PLAN_PATH="$planDir/$current_plan"             # 无配置时：留空
-NAME="$current_name"                           # 无配置时：$(date +%Y-%m-%d)_$(basename "$VIDEO_PATH" .mp4)
-BASE_DIR="$workRoot/$NAME"                     # 无配置时：./output/$NAME
-DELIVER_DIR="$deliverRoot/$NAME"               # 无配置时：留空，跳过步骤 5
+```text
+CONFIG_DIR  = dirname(CONFIG_PATH)
+VIDEO_DIR   = resolve(CONFIG_DIR, paths.videoDir)
+PLAN_DIR    = resolve(CONFIG_DIR, paths.planDir)
+VIDEO_PATH  = resolve(VIDEO_DIR, current.video)
+PLAN_PATH   = resolve_plan(PLAN_DIR, current.plan)  # 可返回空、具体文件，或触发候选选择
+NAME        = current.name
+BASE_DIR    = resolve(CONFIG_DIR, paths.workRoot) / NAME
+DELIVER_DIR = resolve(CONFIG_DIR, paths.deliverRoot) / NAME
 ```
 
 ### 步骤 1：转录 + 信号分析
@@ -189,8 +180,10 @@ DELIVER_DIR="$deliverRoot/$NAME"               # 无配置时：留空，跳过�
 ```bash
 videocut process "$VIDEO_PATH" -o "$BASE_DIR" \
   ${HOTWORDS_FILE:+--hotwords "$HOTWORDS_FILE"}
-# 讲稿 / 制作方案（配置里的 current.plan，或用户对话里给的），拷进 inputs/：
-cp "$PLAN_PATH" "$BASE_DIR/inputs/video_script.md"
+# 有讲稿时才拷进 inputs/：
+if [ -n "$PLAN_PATH" ]; then
+  cp "$PLAN_PATH" "$BASE_DIR/inputs/video_script.md"
+fi
 ```
 
 CLI 会自动建出 `inputs/ work/ final/` 三个目录，源视频软链到 `inputs/source.<ext>`，转录和信号产出到 `work/`。首次运行会下载模型 (~1.5GB)。
@@ -341,7 +334,7 @@ CLI 会：
 
 ### 步骤 5：交付
 
-`deliver.layout == "final-only"` 时，把成片拷到 Windows 盘：
+`deliver.layout == "final-only"` 时，把成片拷到交付目录：
 
 ```bash
 mkdir -p "$DELIVER_DIR"
@@ -350,7 +343,7 @@ cp "$BASE_DIR"/final/edited.mp4 "$BASE_DIR"/final/edited.srt "$DELIVER_DIR"/
 
 拷贝而非移动——`BASE_DIR` 留着，方便改 `edits.json` 重跑步骤 4。`layout == "full"` 时 `BASE_DIR` 本身就在 `deliverRoot` 下，跳过本步。
 
-最后向用户报告：`DELIVER_DIR` 的**Windows 路径**（`/mnt/d/...` → `D:\...`）、原时长 → 新时长、删了几处。
+最后向用户报告：用户所在系统能直接打开的 `DELIVER_DIR` 路径、原时长 → 新时长、删了几处。
 
 ## 批量模式（多个视频）
 
